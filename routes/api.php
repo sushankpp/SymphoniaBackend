@@ -7,7 +7,19 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// Debug PHP settings
+Route::get('/debug-upload-settings', function () {
+    return response()->json([
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'post_max_size' => ini_get('post_max_size'),
+        'max_file_uploads' => ini_get('max_file_uploads'),
+        'memory_limit' => ini_get('memory_limit'),
+        'max_execution_time' => ini_get('max_execution_time'),
+    ]);
+});
+
 Route::get('/music', \App\Http\Controllers\MusicController::class);
+Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic']);
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);
 

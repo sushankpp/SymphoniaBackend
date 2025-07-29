@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "serve": "php -d upload_max_filesize=50M -d post_max_size=50M -d memory_limit=256M -d max_execution_time=300 -S 127.0.0.1:8000 -t public"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
