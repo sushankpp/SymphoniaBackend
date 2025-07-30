@@ -20,6 +20,8 @@ Route::get('/debug-upload-settings', function () {
 
 Route::get('/music', \App\Http\Controllers\MusicController::class);
 Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic']);
+Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
+
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);
 
