@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Album;
-use App\Models\Artists;
+use App\Models\Artist;
 use Illuminate\Http\Request;
 
 class AlbumController extends Controller
@@ -47,7 +47,7 @@ class AlbumController extends Controller
 
     public function getAlbumsByArtist($artistId): \Illuminate\Http\JsonResponse
     {
-        $artist = Artists::with('albums.songs')->findOrFail($artistId);
+        $artist = Artist::with('albums.songs')->findOrFail($artistId);
 
         $albums = $artist->albums->map(function ($album) {
             return [

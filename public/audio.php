@@ -1,5 +1,4 @@
 <?php
-// Simple file server with CORS headers for audio files, cover images, and artist images
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin');
@@ -26,6 +25,8 @@ if ($type === 'compressed') {
     $basePath .= 'songs_cover/';
 } elseif ($type === 'artist' || $type === 'artist_image') {
     $basePath .= 'artist_image/';
+} else if ($type == "albums_cover") {
+    $basePath .= 'albums_cover/';
 } else {
     $basePath .= 'audios/';
 }

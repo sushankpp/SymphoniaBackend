@@ -39,3 +39,7 @@ Route::get('/playlists', [\App\Http\Controllers\PlaylistController::class, 'inde
 Route::post('/playlists', [\App\Http\Controllers\PlaylistController::class, 'store']);
 Route::post('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'addSong']);
 Route::get('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'getSongs']);
+
+//ratings
+Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
+Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);

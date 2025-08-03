@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Artists;
+use App\Models\Artist;
 use Illuminate\Http\Request;
 
 class ArtistController extends Controller
 {
     public function index(Request $request)
     {
-        $artists = Artists::withCount('music')->get()->map(function ($item) {
+        $artists = Artist::withCount('music')->get()->map(function ($item) {
             $item->artist_image = asset('storage/' . $item->artist_image);
             return $item;
         });
@@ -19,7 +19,7 @@ class ArtistController extends Controller
 
     public function getSongs($artistId)
     {
-        $artist = Artists::find($artistId);
+        $artist = Artist::find($artistId);
 
         if (!$artist) {
             return response()->json(['message' => 'Artist not found'], 404);

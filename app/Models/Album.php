@@ -17,11 +17,15 @@ class Album extends Model
 
     public function artists()
     {
-        return $this->belongsTo(Artists::class, 'artist_id');
+        return $this->belongsTo(Artist::class, 'artist_id');
     }
 
     public function songs()
     {
         return $this->hasMany(Music::class, 'album_id');
+    }
+
+    public function ratings(){
+        return $this->morphMany(Rating::class, 'rateable');
     }
 }

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Artists extends Model
+class Artist extends Model
 {
     use HasFactory;
 
@@ -22,5 +22,10 @@ class Artists extends Model
     public function albums(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Album::class, 'artist_id');
+    }
+
+    public function ratings()
+    {
+        return $this->morphMany(Rating::class, 'rateable');
     }
 }

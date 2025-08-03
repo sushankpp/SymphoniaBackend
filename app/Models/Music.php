@@ -20,11 +20,16 @@ class Music extends Model
 
     public function artist(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(Artists::class);
+        return $this->belongsTo(Artist::class);
     }
 
     public function album(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Album::class, 'album_id');
+    }
+
+    public function ratings()
+    {
+        return $this->morphMany(Rating::class, 'rateable');
     }
 }
