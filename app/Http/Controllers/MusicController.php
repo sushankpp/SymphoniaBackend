@@ -39,6 +39,13 @@ class MusicController extends Controller
                 $item->album_cover = asset('storage/' . $item->album->cover);
             };
 
+            // Include additional fields
+            $item->views = $item->views ?? 0;
+            $item->genre = $item->genre ?? '';
+            $item->description = $item->description ?? '';
+            $item->lyrics = $item->lyrics ?? '';
+            $item->release_date = $item->release_date ?? null;
+
             return $item;
         });
 
@@ -79,45 +86,52 @@ class MusicController extends Controller
                     $music->uploaded_by = $uploadedItem->uploaded_by;
                     $music->uploaded_at = $uploadedItem->uploaded_at;
 
+                    // Add additional fields
+                    $music->views = $music->views ?? 0;
+                    $music->genre = $music->genre ?? '';
+                    $music->description = $music->description ?? '';
+                    $music->lyrics = $music->lyrics ?? '';
+                    $music->release_date = $music->release_date ?? null;
+
                     // Add file size information
                     $relativePath = str_replace(asset('storage/'), '', $music->file_path);
                     if (File::exists(storage_path('app/public/' . $relativePath))) {
                         $fileSize = File::size(storage_path('app/public/' . $relativePath));
                         $music->file_size = $this->formatBytes($fileSize);
-                        
+
                         // Try to find original file for compression stats
                         if (strpos($relativePath, 'audios/compressed/') !== false) {
                             // Extract the base filename without extension
                             $compressedFilename = basename($relativePath, '.m4a');
                             $compressedFilename = basename($compressedFilename, '.mp3');
-                            
+
                             // Look for original file with timestamp pattern (new files)
                             $originalDir = storage_path('app/public/audios/original');
                             $originalFiles = glob($originalDir . '/' . $compressedFilename . '_*.*');
-                            
+
                             // If not found, try exact same name (old files)
                             if (empty($originalFiles)) {
                                 $originalFiles = glob($originalDir . '/' . $compressedFilename . '.*');
                             }
-                            
+
                             Log::info('Looking for original file', [
                                 'compressed_filename' => $compressedFilename,
                                 'original_files_found' => count($originalFiles),
                                 'files' => $originalFiles
                             ]);
-                            
+
                             if (!empty($originalFiles)) {
                                 $originalPath = $originalFiles[0];
                                 $originalSize = File::size($originalPath);
                                 $compressionRatio = round(($originalSize - $fileSize) / $originalSize * 100, 2);
-                                
+
                                 $music->compression_stats = [
                                     'original_size' => $this->formatBytes($originalSize),
                                     'compressed_size' => $music->file_size,
                                     'compression_ratio' => $compressionRatio,
                                     'space_saved' => $this->formatBytes($originalSize - $fileSize)
                                 ];
-                                
+
                                 Log::info('Compression stats found', $music->compression_stats);
                             } else {
                                 Log::info('No original file found for compression stats', [
@@ -161,11 +175,11 @@ class MusicController extends Controller
             $originalFilename = $request->file('audio_file')->getClientOriginalName();
             $originalExtension = pathinfo($originalFilename, PATHINFO_EXTENSION);
             $originalName = pathinfo($originalFilename, PATHINFO_FILENAME);
-            
+
             // Create unique filename with original name
             $uniqueFilename = $originalName . '_' . time() . '.' . $originalExtension;
             $originalAudioPath = $request->file('audio_file')->storeAs('audios/original', $uniqueFilename, 'public');
-            
+
             $coverPath = $request->file('cover_image')->store('songs_cover', 'public');
 
             $this->ensureCompressedDirectoryExists();
@@ -194,6 +208,11 @@ class MusicController extends Controller
                 'song_cover_path' => $coverPath,
                 'artist_id' => $validated['artist_id'],
                 'album_id' => $request->input('album_id') ?? null,
+                'genre' => $validated['genre'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'release_date' => $validated['release_date'] ?? null,
+                'lyrics' => $validated['lyrics'] ?? null,
+                'views' => 0, // Initialize views to 0
             ]);
 
             UploadedMusic::create([
@@ -204,7 +223,7 @@ class MusicController extends Controller
             // Get file sizes for response
             $originalSize = File::size(storage_path('app/public/' . $originalAudioPath));
             $compressedSize = File::size(storage_path('app/public/' . $compressedAudioPath));
-            
+
             $originalSizeFormatted = $this->formatBytes($originalSize);
             $compressedSizeFormatted = $this->formatBytes($compressedSize);
             $compressionRatio = round(($originalSize - $compressedSize) / $originalSize * 100, 2);
@@ -238,7 +257,6 @@ class MusicController extends Controller
     private function generateCompressedFilePath($originalPath)
     {
         $filename = basename($originalPath, '.' . pathinfo($originalPath, PATHINFO_EXTENSION));
-        // Remove the timestamp suffix to get clean original name
         $originalName = preg_replace('/_\d+$/', '', $filename);
         return 'audios/compressed/' . $originalName . '.m4a';
     }
@@ -280,6 +298,17 @@ class MusicController extends Controller
         $bytes /= pow(1024, $pow);
 
         return round($bytes, $precision) . ' ' . $units[$pow];
+    }
+
+    public function playSong($id)
+    {
+        $music = Music::findOrFail($id);
+        $music->increment('views');
+        return response()->json([
+            'message' => 'Song is being played',
+            'music' => $music
+        ], 200);
+
     }
 }
 

@@ -17,12 +17,18 @@ class AlbumController extends Controller
                 'cover_image' => asset('storage/' . $album->cover_image_path),
                 'artist_name' => $album->artists->artist_name,
                 'artist_id'=> $album->artists->id,
+                'release_date' => $album->release_date,
                 'songs' => $album->songs->map(function ($song) {
                     return [
                         'id' => $song->id,
                         'title' => $song->title,
                         'song_cover' => asset('storage/' . $song->song_cover_path),
                         'file_path' => asset('storage/' . $song->file_path),
+                        'views' => $song->views ?? 0,
+                        'genre' => $song->genre ?? '',
+                        'description' => $song->description ?? '',
+                        'lyrics' => $song->lyrics ?? '',
+                        'release_date' => $song->release_date ?? null,
                     ];
                 }),
             ];
@@ -54,12 +60,18 @@ class AlbumController extends Controller
                 'id' => $album->id,
                 'title' => $album->title,
                 'cover_image' => asset('storage/' . $album->cover_image_path),
+                'release_date' => $album->release_date,
                 'songs' => $album->songs->map(function ($song) {
                     return [
                         'id' => $song->id,
                         'title' => $song->title,
                         'song_cover' => asset('storage/' . $song->song_cover_path),
                         'file_path' => asset('storage/' . $song->file_path),
+                        'views' => $song->views ?? 0,
+                        'genre' => $song->genre ?? '',
+                        'description' => $song->description ?? '',
+                        'lyrics' => $song->lyrics ?? '',
+                        'release_date' => $song->release_date ?? null,
                     ];
                 }),
             ];

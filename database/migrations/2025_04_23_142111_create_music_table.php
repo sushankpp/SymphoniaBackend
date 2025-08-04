@@ -16,6 +16,10 @@ return new class extends Migration {
             $table->string('song_cover_path');
             $table->string('file_path');
             $table->unsignedBigInteger('artist_id');
+            $table->string('genre')->nullable();
+            $table->text('description')->nullable();
+            $table->string('lyrics')->nullable();
+            $table->unsignedBigInteger('views')->default(0);
             $table->foreign('artist_id')->references('id')->on('artists')->onDelete('cascade');
             $table->foreignId('album_id')->nullable()->constrained('albums')->onDelete('cascade');
             $table->timestamps();

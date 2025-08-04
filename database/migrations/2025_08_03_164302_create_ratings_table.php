@@ -10,15 +10,17 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::create('ratings', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('rateable_id'); // ID of the item being rated (song, artist, album)
-            $table->string('rateable_type'); // Type of item being rated
-            $table->unsignedTinyInteger('rating');
-            $table->timestamps();
+        if (!Schema::hasTable('ratings')) {
+            Schema::create('ratings', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('rateable_id'); // ID of the item being rated (song, artist, album)
+                $table->string('rateable_type'); // Type of item being rated
+                $table->unsignedTinyInteger('rating');
+                $table->timestamps();
 
-            $table->index(['rateable_id', 'rateable_type']); // polymorphic relation
-        });
+                $table->index(['rateable_id', 'rateable_type']); // polymorphic relation
+            });
+        }
     }
 
     /**

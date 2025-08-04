@@ -34,7 +34,6 @@ class ArtistController extends Controller
             'artist_image' => asset('storage/' . $artist->artist_image),
             'song_cover' => asset('storage/' . $artist->song_cover_path),
             'song_count' => $songCount,
-
         ];
 
         $songsData = $songs->map(function ($song) {
@@ -43,6 +42,11 @@ class ArtistController extends Controller
                 'title' => $song->title,
                 'song_cover' => asset('storage/' . $song->song_cover_path),
                 'file_path' => asset('storage/' . $song->file_path),
+                'views' => $song->views ?? 0,
+                'genre' => $song->genre ?? '',
+                'description' => $song->description ?? '',
+                'lyrics' => $song->lyrics ?? '',
+                'release_date' => $song->release_date ?? null,
             ];
         });
 

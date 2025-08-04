@@ -14,9 +14,14 @@ class Music extends Model
         'song_cover_path',
         'file_path',
         'artist_id',
-        'album_id'
-
+        'album_id',
+        'genre',
+        'description',
+        'lyrics',
+        'views',
+        'release_date',
     ];
+
 
     public function artist(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {

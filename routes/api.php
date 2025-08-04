@@ -1,11 +1,30 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+//Auth Routes
+Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/register', [AuthController::class, 'register']);
+Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
+Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
+
+//authenticated Routes
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/auth/user', [AuthController::class, 'getAuthenticatedUser']);
+    Route::put('/auth/user', [AuthController::class, 'updateProfile']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
+});
+
+Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
+Route::post('/auth/email/verification-notification', [AuthController::class, 'sendVerificationEmail'])->name('verification.send');
+
 
 // Debug PHP settings
 Route::get('/debug-upload-settings', function () {
@@ -19,6 +38,7 @@ Route::get('/debug-upload-settings', function () {
 });
 
 Route::get('/music', \App\Http\Controllers\MusicController::class);
+Route::post('/music/{id}/play', [\App\Http\Controllers\MusicController::class, 'playSong']);
 Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic']);
 Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
 
