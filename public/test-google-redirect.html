@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth Test</title>
+</head>
+<body>
+    <h1>Google OAuth Redirect Test</h1>
+    
+    <div id="debug-info">
+        <h2>Debug Information:</h2>
+        <p><strong>Current URL:</strong> <span id="current-url"></span></p>
+        <p><strong>URL Parameters:</strong> <span id="url-params"></span></p>
+        <p><strong>Access Token:</strong> <span id="access-token"></span></p>
+        <p><strong>Error:</strong> <span id="error"></span></p>
+    </div>
+
+    <script>
+        // Display current URL and parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessToken = urlParams.get('access_token');
+        const error = urlParams.get('error');
+        
+        document.getElementById('current-url').textContent = window.location.href;
+        document.getElementById('url-params').textContent = window.location.search;
+        document.getElementById('access-token').textContent = accessToken || 'None';
+        document.getElementById('error').textContent = error || 'None';
+        
+        console.log('Current URL:', window.location.href);
+        console.log('URL Parameters:', window.location.search);
+        console.log('Access Token:', accessToken);
+        console.log('Error:', error);
+        
+        // If we have an access token, store it and redirect
+        if (accessToken) {
+            console.log('Access token received, storing in localStorage...');
+            localStorage.setItem('auth_token', accessToken);
+            alert('Access token received and stored! Redirecting to home...');
+            // window.location.href = '/';
+        } else if (error) {
+            console.log('Error received:', error);
+            alert('Error: ' + error);
+        } else {
+            console.log('No access token or error found');
+        }
+    </script>
+</body>
+</html> 

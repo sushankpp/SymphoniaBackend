@@ -3,6 +3,8 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage; // Added for image upload test
+use Illuminate\Support\Facades\Log; // Added for database update test
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -14,17 +16,19 @@ Route::post('/auth/register', [AuthController::class, 'register']);
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
+// Session routes moved to web.php for proper session support
+
 //authenticated Routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/user', [AuthController::class, 'getAuthenticatedUser']);
     Route::put('/auth/user', [AuthController::class, 'updateProfile']);
+    Route::post('/auth/user', [AuthController::class, 'updateProfile']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
 });
 
 Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 Route::post('/auth/email/verification-notification', [AuthController::class, 'sendVerificationEmail'])->name('verification.send');
-
 
 // Debug PHP settings
 Route::get('/debug-upload-settings', function () {
@@ -37,11 +41,130 @@ Route::get('/debug-upload-settings', function () {
     ]);
 });
 
+// Test image upload endpoint
+Route::post('/test-image-upload', function (Request $request) {
+    try {
+        if (!$request->hasFile('image')) {
+            return response()->json(['error' => 'No image file provided'], 400);
+        }
+
+        $file = $request->file('image');
+        
+        // Validate file
+        if (!$file->isValid()) {
+            return response()->json(['error' => 'Invalid file upload'], 400);
+        }
+
+        // Check file size (max 2MB)
+        if ($file->getSize() > 2 * 1024 * 1024) {
+            return response()->json(['error' => 'File size too large (max 2MB)'], 400);
+        }
+
+        // Validate mime type
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (!in_array($file->getMimeType(), $allowedMimes)) {
+            return response()->json(['error' => 'Invalid file type. Only JPEG, PNG, and GIF are allowed.'], 400);
+        }
+
+        // Get original extension
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (!in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
+            return response()->json(['error' => 'Invalid file extension'], 400);
+        }
+
+        // Generate unique filename
+        $filename = 'test_' . time() . '.' . $extension;
+        
+        // Store file
+        $path = $file->storeAs('images/test/', $filename, 'public');
+        
+        // Verify file was stored correctly
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json(['error' => 'Failed to store file'], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image uploaded successfully',
+            'file_info' => [
+                'original_name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+                'mime_type' => $file->getMimeType(),
+                'extension' => $extension,
+                'stored_path' => $path,
+                'url' => Storage::disk('public')->url($path)
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Upload failed: ' . $e->getMessage()
+        ], 500);
+    }
+});
+
+// Simple test endpoint
+Route::get('/test', function () {
+    return response()->json([
+        'message' => 'Server is running!',
+        'timestamp' => now(),
+        'status' => 'ok'
+    ]);
+});
+
+// FFmpeg test endpoint
+Route::get('/test-ffmpeg', function () {
+    try {
+        // Test FFmpeg command
+        $command = 'ffmpeg -version 2>&1';
+        $output = shell_exec($command);
+        
+        // Test a simple conversion
+        $testInput = storage_path('app/public/audios/original');
+        $testOutput = storage_path('app/temp/test_output.raw');
+        
+        // Check if we have any audio files to test with
+        $audioFiles = glob($testInput . '/*.mp3');
+        $testFile = !empty($audioFiles) ? $audioFiles[0] : null;
+        
+        $conversionResult = null;
+        if ($testFile) {
+            $convertCommand = sprintf(
+                'ffmpeg -i %s -f s16le -acodec pcm_s16le -ar 44100 -ac 2 %s -y 2>&1',
+                escapeshellarg($testFile),
+                escapeshellarg($testOutput)
+            );
+            
+            $conversionOutput = shell_exec($convertCommand);
+            $conversionResult = [
+                'command' => $convertCommand,
+                'output' => $conversionOutput,
+                'success' => file_exists($testOutput),
+                'test_file' => basename($testFile)
+            ];
+            
+            // Cleanup
+            if (file_exists($testOutput)) {
+                unlink($testOutput);
+            }
+        }
+        
+        return response()->json([
+            'ffmpeg_version' => $output,
+            'conversion_test' => $conversionResult,
+            'available_test_files' => array_map('basename', $audioFiles)
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
 Route::get('/music', \App\Http\Controllers\MusicController::class);
 Route::post('/music/{id}/play', [\App\Http\Controllers\MusicController::class, 'playSong']);
 Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic']);
 Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
-
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);
 
@@ -63,3 +186,245 @@ Route::get('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistControl
 //ratings
 Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
 Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
+// Test database update endpoint
+Route::post('/test-db-update', function (Request $request) {
+    try {
+        $user = auth()->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'User not authenticated'], 401);
+        }
+
+        // Test simple update
+        $testData = [
+            'name' => 'Test Update ' . time(),
+            'bio' => 'Test bio ' . time()
+        ];
+
+        Log::info('Testing database update with data:', $testData);
+
+        $user->update($testData);
+        $user->refresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Database update test successful',
+            'user_data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'bio' => $user->bio,
+                'gender' => $user->gender,
+                'dob' => $user->dob,
+                'phone' => $user->phone,
+                'address' => $user->address,
+                'profile_picture' => $user->profile_picture
+            ]
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Database update test failed:', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'error' => 'Database update test failed: ' . $e->getMessage()
+        ], 500);
+    }
+})->middleware('auth:sanctum');
+
+// Test current user data
+Route::get('/test-user-data', function (Request $request) {
+    try {
+        $user = auth()->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'User not authenticated'], 401);
+        }
+
+        // Get fresh data from database
+        $user->refresh();
+
+        return response()->json([
+            'success' => true,
+            'user_data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'bio' => $user->bio,
+                'gender' => $user->gender,
+                'dob' => $user->dob,
+                'phone' => $user->phone,
+                'address' => $user->address,
+                'profile_picture' => $user->profile_picture,
+                'updated_at' => $user->updated_at,
+                'created_at' => $user->created_at
+            ]
+        ]);
+    } catch (\Exception $e) {
+        Log::error('User data test failed:', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'error' => 'User data test failed: ' . $e->getMessage()
+        ], 500);
+    }
+})->middleware('auth:sanctum');
+
+// Test Google OAuth configuration
+Route::get('/test-google-config', function () {
+    try {
+        $config = [
+            'client_id' => env('GOOGLE_CLIENT_ID'),
+            'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+            'redirect_uri' => env('GOOGLE_REDIRECT_URI'),
+            'admin_email' => env('GOOGLE_ADMIN_EMAIL'),
+            'environment' => app()->environment(),
+            'app_url' => env('APP_URL'),
+            'frontend_url' => env('FRONTEND_URL')
+        ];
+
+        // Check if required config is present
+        $missing = [];
+        if (empty($config['client_id'])) $missing[] = 'GOOGLE_CLIENT_ID';
+        if (empty($config['client_secret'])) $missing[] = 'GOOGLE_CLIENT_SECRET';
+        if (empty($config['redirect_uri'])) $missing[] = 'GOOGLE_REDIRECT_URI';
+
+        return response()->json([
+            'success' => empty($missing),
+            'config' => $config,
+            'missing_config' => $missing,
+            'message' => empty($missing) ? 'Google OAuth configuration looks good' : 'Missing required Google OAuth configuration'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Google config test failed: ' . $e->getMessage()
+        ], 500);
+    }
+});
+
+// Session check route that works with both session and token auth
+Route::middleware(['web'])->group(function () {
+    Route::get('/auth/check', function (Request $request) {
+        try {
+            // First try session-based authentication
+            if (auth()->check()) {
+                $user = auth()->user();
+                return response()->json([
+                    'authenticated' => true,
+                    'method' => 'session',
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'profile_picture' => $user->profile_picture,
+                        'role' => $user->role,
+                        'is_email_verified' => $user->hasVerifiedEmail(),
+                    ],
+                    'session_id' => $request->session()->getId(),
+                ]);
+            }
+
+            // Then try token-based authentication
+            $token = $request->bearerToken();
+            if ($token) {
+                $user = auth('sanctum')->user();
+                if ($user) {
+                    return response()->json([
+                        'authenticated' => true,
+                        'method' => 'token',
+                        'user' => [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'email' => $user->email,
+                            'profile_picture' => $user->profile_picture,
+                            'role' => $user->role,
+                            'is_email_verified' => $user->hasVerifiedEmail(),
+                        ],
+                    ]);
+                }
+            }
+
+            // User is not authenticated - this is normal, not an error
+            return response()->json([
+                'authenticated' => false,
+                'message' => 'User not logged in',
+                'session_id' => $request->session()->getId(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Auth check failed:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'authenticated' => false,
+                'error' => 'Authentication check failed: ' . $e->getMessage()
+            ], 500);
+        }
+    });
+});
+
+// Test session functionality
+Route::middleware(['web'])->group(function () {
+    Route::get('/test-session', function (Request $request) {
+        try {
+            $sessionId = $request->session()->getId();
+            $sessionData = $request->session()->all();
+            
+            return response()->json([
+                'success' => true,
+                'session_id' => $sessionId,
+                'session_data' => $sessionData,
+                'auth_check' => auth()->check(),
+                'user' => auth()->user() ? auth()->user()->only(['id', 'name', 'email']) : null,
+                'session_driver' => config('session.driver'),
+                'session_lifetime' => config('session.lifetime'),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    });
+});
+
+// Test session login
+Route::middleware(['web'])->group(function () {
+    Route::post('/test-login', function (Request $request) {
+        try {
+            $credentials = $request->only(['email', 'password']);
+            
+            if (auth()->attempt($credentials)) {
+                $user = auth()->user();
+                $request->session()->regenerate();
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login successful',
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                    ],
+                    'session_id' => $request->session()->getId(),
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials'
+                ], 401);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    });
+});
+

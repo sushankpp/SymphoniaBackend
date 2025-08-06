@@ -15,6 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(
             \Illuminate\Http\Middleware\HandleCors::class,
         );
+        
+        // Ensure session middleware is available for API routes
+        $middleware->alias([
+            'session' => \Illuminate\Session\Middleware\StartSession::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

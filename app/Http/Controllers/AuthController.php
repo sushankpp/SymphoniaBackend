@@ -38,6 +38,46 @@ class AuthController extends Controller
         ]);
     }
 
+    // Session-based login function
+    public function sessionLogin(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|string',
+            ]);
+
+            if (!auth()->attempt($request->only('email', 'password'))) {
+                return response()->json(['message' => 'Invalid credentials'], 401);
+            }
+
+            $user = auth()->user();
+            $request->session()->regenerate();
+
+            return response()->json([
+                'message' => 'Login successful',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'profile_picture' => $user->profile_picture,
+                    'role' => $user->role,
+                    'is_email_verified' => $user->hasVerifiedEmail(),
+                    'created_at' => $user->created_at->toDateTimeString(),
+                    'gender' => $user->gender,
+                    'dob' => $user->dob ? $user->dob->toDateString() : null,
+                    'phone' => $user->phone,
+                    'bio' => $user->bio,
+                    'address' => $user->address,
+                    'status' => $user->status,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Session login failed: ' . $e->getMessage());
+            return response()->json(['message' => 'Login failed: ' . $e->getMessage()], 500);
+        }
+    }
+
     // Register function
     public function register(Request $request)
     {
@@ -81,73 +121,15 @@ class AuthController extends Controller
     // Get authenticated user
     public function getAuthenticatedUser(Request $request)
     {
-        $user = auth()->user();
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'profile_picture' => $user->profile_picture,
-            'role' => $user->role,
-            'is_email_verified' => $user->hasVerifiedEmail(),
-            'created_at' => $user->created_at->toDateTimeString(),
-            'gender' => $user->gender,
-            'dob' => $user->dob ? $user->dob->toDateString() : null,
-            'phone' => $user->phone,
-            'bio' => $user->bio,
-            'address' => $user->address,
-            'status' => $user->status,
-        ], 200);
-    }
-
-    // Update user profile
-    public function updateProfile(Request $request)
-    {
-        $user = auth()->user();
-        
-        $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'gender' => 'sometimes|string|in:male,female,other',
-            'dob' => 'sometimes|date|before:today',
-            'phone' => 'sometimes|string|max:20',
-            'bio' => 'sometimes|string|max:500',
-            'address' => 'sometimes|string|max:500',
-            'profile_picture' => 'sometimes|image|mimes:jpeg,png,jpg,gif|max:2048',
-        ]);
-
-        $updateData = $request->only([
-            'name', 'email', 'gender', 'phone', 'bio', 'address'
-        ]);
-
-        // Handle date of birth
-        if ($request->has('dob')) {
-            $updateData['dob'] = $request->dob;
-        }
-
-        // Handle profile picture upload
-        if ($request->hasFile('profile_picture')) {
-            // Delete old profile picture if exists
-            if ($user->profile_picture) {
-                $oldPath = str_replace('/storage/', '', $user->profile_picture);
-                if (Storage::disk('public')->exists($oldPath)) {
-                    Storage::disk('public')->delete($oldPath);
-                }
+        try {
+            $user = auth()->user();
+            
+            if (!$user) {
+                return response()->json(['message' => 'User not authenticated'], 401);
             }
 
-            // Store new profile picture
-            $path = $request->file('profile_picture')->storeAs(
-                'images/profile_pictures/', 
-                $user->id . '_' . time() . '.jpg', 
-                'public'
-            );
-            $updateData['profile_picture'] = Storage::disk('public')->url($path);
-        }
-
-        $user->update($updateData);
-
-        return response()->json([
-            'message' => 'Profile updated successfully',
-            'user' => [
+            // Return user data directly for compatibility
+            return response()->json([
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
@@ -161,8 +143,128 @@ class AuthController extends Controller
                 'bio' => $user->bio,
                 'address' => $user->address,
                 'status' => $user->status,
-            ]
-        ], 200);
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Get authenticated user failed: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to get user data'], 500);
+        }
+    }
+
+    // Check session authentication
+    public function checkSessionAuth(Request $request)
+    {
+        try {
+            if (auth()->check()) {
+                $user = auth()->user();
+                return response()->json([
+                    'authenticated' => true,
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'profile_picture' => $user->profile_picture,
+                        'role' => $user->role,
+                        'is_email_verified' => $user->hasVerifiedEmail(),
+                        'created_at' => $user->created_at->toDateTimeString(),
+                        'gender' => $user->gender,
+                        'dob' => $user->dob ? $user->dob->toDateString() : null,
+                        'phone' => $user->phone,
+                        'bio' => $user->bio,
+                        'address' => $user->address,
+                        'status' => $user->status,
+                    ]
+                ]);
+            } else {
+                return response()->json([
+                    'authenticated' => false,
+                    'message' => 'User not authenticated'
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Session auth check failed: ' . $e->getMessage());
+            return response()->json([
+                'authenticated' => false,
+                'error' => 'Authentication check failed'
+            ], 500);
+        }
+    }
+
+    // Update user profile
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            
+            if (!$user) {
+                return response()->json(['message' => 'User not authenticated'], 401);
+            }
+
+            $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $user->id,
+                'gender' => 'sometimes|string|in:male,female,other',
+                'dob' => 'sometimes|date|before:today',
+                'phone' => 'sometimes|string|max:20',
+                'bio' => 'sometimes|string|max:500',
+                'address' => 'sometimes|string|max:500',
+                'profile_picture' => 'sometimes|image|mimes:jpeg,png,jpg,gif|max:2048',
+            ]);
+
+            $updateData = $request->only([
+                'name', 'email', 'gender', 'phone', 'bio', 'address'
+            ]);
+
+            // Handle date of birth
+            if ($request->has('dob')) {
+                $updateData['dob'] = $request->dob;
+            }
+
+            // Handle profile picture upload
+            if ($request->hasFile('profile_picture')) {
+                // Delete old profile picture if exists
+                if ($user->profile_picture) {
+                    $oldPath = str_replace('/storage/', '', $user->profile_picture);
+                    if (Storage::disk('public')->exists($oldPath)) {
+                        Storage::disk('public')->delete($oldPath);
+                    }
+                }
+
+                // Store new profile picture
+                $path = $request->file('profile_picture')->storeAs(
+                    'images/profile_pictures/', 
+                    $user->id . '_' . time() . '.jpg', 
+                    'public'
+                );
+                $updateData['profile_picture'] = Storage::disk('public')->url($path);
+            }
+
+            $user->update($updateData);
+            $user->refresh(); // Refresh to get updated data
+
+            return response()->json([
+                'message' => 'Profile updated successfully',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'profile_picture' => $user->profile_picture,
+                    'role' => $user->role,
+                    'is_email_verified' => $user->hasVerifiedEmail(),
+                    'created_at' => $user->created_at->toDateTimeString(),
+                    'gender' => $user->gender,
+                    'dob' => $user->dob ? $user->dob->toDateString() : null,
+                    'phone' => $user->phone,
+                    'bio' => $user->bio,
+                    'address' => $user->address,
+                    'status' => $user->status,
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Profile update failed: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Profile update failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     // Google OAuth redirect
@@ -186,10 +288,9 @@ class AuthController extends Controller
     }
 
         // Google OAuth callback
-    public function handleGoogleCallback()
+    public function handleGoogleCallback(Request $request)
     {
         try {
-            
             $httpClientConfig = [
                 'timeout' => 30,
             ];
@@ -204,12 +305,14 @@ class AuthController extends Controller
                 ->setHttpClient($httpClient)
                 ->stateless()
                 ->user();
+            
             $adminEmail = env('GOOGLE_ADMIN_EMAIL');
 
+            // Find or create user
             $user = User::where('email', $googleUser->email)->first();
-            $frontendPath = '/'; // Redirect to home page for all users
 
             if ($user) {
+                // Update existing user
                 $user->update([
                     'name' => $googleUser->name,
                     'google_id' => $googleUser->id,
@@ -218,6 +321,7 @@ class AuthController extends Controller
                     'role' => $googleUser->email === $adminEmail ? 'admin' : 'user',
                 ]);
             } else {
+                // Create new user
                 $user = User::create([
                     'name' => $googleUser->name,
                     'email' => $googleUser->email,
@@ -227,31 +331,38 @@ class AuthController extends Controller
                     'password' => bcrypt(Str::random(16)),
                     'role' => $googleUser->email === $adminEmail ? 'admin' : 'user',
                 ]);
-                // New users also go to home page
             }
 
+            // Mark email as verified
             if (!$user->hasVerifiedEmail()) {
                 $user->markEmailAsVerified();
             }
 
-            $user->save();
-
+            // Download and save profile picture
             if ($googleUser->avatar) {
-                $imageContents = file_get_contents($googleUser->avatar);
-                if ($imageContents) {
-                    $relativePath = 'images/profile_pictures/' . $user->id . '_' . time() . '.jpg';
-                    Storage::disk('public')->put($relativePath, $imageContents);
-                    $user->profile_picture = Storage::disk('public')->url($relativePath);
-                    $user->save();
+                try {
+                    $imageContents = file_get_contents($googleUser->avatar);
+                    if ($imageContents) {
+                        $relativePath = 'images/profile_pictures/' . $user->id . '_' . time() . '.jpg';
+                        Storage::disk('public')->put($relativePath, $imageContents);
+                        $user->profile_picture = Storage::disk('public')->url($relativePath);
+                        $user->save();
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to download Google avatar: ' . $e->getMessage());
                 }
             }
 
+            // Log the user in and create session
             Auth::login($user, remember: true);
-            return redirect(env('FRONTEND_URL', 'http://localhost:5173') . $frontendPath);
+            $request->session()->regenerate();
+
+            // Redirect to frontend callback
+            return redirect()->away(env('FRONTEND_URL', 'http://localhost:5173') . '/auth/callback?success=true');
 
         } catch (\Throwable $e) {
             Log::error('Google Login Failed: ' . $e->getMessage());
-            return redirect(env('FRONTEND_URL', 'http://localhost:5173') . '/login?error=' . urlencode($e->getMessage()));
+            return redirect()->away(env('FRONTEND_URL', 'http://localhost:5173') . '/auth/callback?error=' . urlencode($e->getMessage()));
         }
     }
 
