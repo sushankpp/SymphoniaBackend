@@ -46,6 +46,15 @@ class AlbumController extends Controller
             'release_date' => 'required|date',
         ]);
 
+        // Check if user can create albums
+        $user = auth()->user();
+        if (!$user->canCreateAlbums()) {
+            return response()->json(['error' => 'Only artists can create albums'], 403);
+        }
+
+        // Add user_id to the album creation
+        $validated['user_id'] = $user->id;
+        
         $album = Album::create($validated);
 
         return response()->json(['message' => 'Album created successfully', 'album' => $album], 201);

@@ -15,7 +15,25 @@ class RatingController extends Controller
             'rating' => 'required|integer|min:1|max:5',
         ]);
 
-        $rating = Rating::create($validated);
+        // Check if user already rated this item
+        $existingRating = Rating::where('user_id', auth()->id())
+            ->where('rateable_id', $validated['rateable_id'])
+            ->where('rateable_type', $validated['rateable_type'])
+            ->first();
+
+        if ($existingRating) {
+            // Update existing rating
+            $existingRating->update(['rating' => $validated['rating']]);
+            $rating = $existingRating;
+        } else {
+            // Create new rating
+            $rating = Rating::create([
+                'user_id' => auth()->id(),
+                'rateable_id' => $validated['rateable_id'],
+                'rateable_type' => $validated['rateable_type'],
+                'rating' => $validated['rating'],
+            ]);
+        }
 
         return response()->json([
             'message' => 'Rating created successfully',

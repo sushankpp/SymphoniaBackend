@@ -10,13 +10,26 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// Test endpoint for debugging
+Route::get('/test-connection', function () {
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Backend is reachable',
+        'timestamp' => now()->toISOString(),
+        'cors_working' => true
+    ]);
+});
+
 //Auth Routes
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
-// Session routes moved to web.php for proper session support
+// Recommendations and trending content (work for both authenticated and non-authenticated users)
+Route::get('/recommendations', [\App\Http\Controllers\MusicController::class, 'getRecommendations']);
+Route::get('/top-recommendations', [\App\Http\Controllers\MusicController::class, 'getTopRecommendations']);
+Route::get('/top-artists', [\App\Http\Controllers\MusicController::class, 'getTopArtists']);
 
 //authenticated Routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -25,6 +38,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/user', [AuthController::class, 'updateProfile']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
+    
+    //recently played routes
+    Route::post('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'store']);
+    Route::get('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'index']);
+    
+    // Playlists (require authentication)
+    Route::get('/playlists', [\App\Http\Controllers\PlaylistController::class, 'index']);
+    Route::post('/playlists', [\App\Http\Controllers\PlaylistController::class, 'store']);
+    Route::post('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'addSong']);
+    Route::get('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'getSongs']);
+    
+    // Ratings (require authentication)
+    Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
+    Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
+    
+    // Albums (store requires authentication)
+    Route::post('/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
 });
 
 Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
@@ -49,7 +79,7 @@ Route::post('/test-image-upload', function (Request $request) {
         }
 
         $file = $request->file('image');
-        
+
         // Validate file
         if (!$file->isValid()) {
             return response()->json(['error' => 'Invalid file upload'], 400);
@@ -74,10 +104,10 @@ Route::post('/test-image-upload', function (Request $request) {
 
         // Generate unique filename
         $filename = 'test_' . time() . '.' . $extension;
-        
+
         // Store file
         $path = $file->storeAs('images/test/', $filename, 'public');
-        
+
         // Verify file was stored correctly
         if (!Storage::disk('public')->exists($path)) {
             return response()->json(['error' => 'Failed to store file'], 500);
@@ -117,15 +147,15 @@ Route::get('/test-ffmpeg', function () {
         // Test FFmpeg command
         $command = 'ffmpeg -version 2>&1';
         $output = shell_exec($command);
-        
+
         // Test a simple conversion
         $testInput = storage_path('app/public/audios/original');
         $testOutput = storage_path('app/temp/test_output.raw');
-        
+
         // Check if we have any audio files to test with
         $audioFiles = glob($testInput . '/*.mp3');
         $testFile = !empty($audioFiles) ? $audioFiles[0] : null;
-        
+
         $conversionResult = null;
         if ($testFile) {
             $convertCommand = sprintf(
@@ -133,7 +163,7 @@ Route::get('/test-ffmpeg', function () {
                 escapeshellarg($testFile),
                 escapeshellarg($testOutput)
             );
-            
+
             $conversionOutput = shell_exec($convertCommand);
             $conversionResult = [
                 'command' => $convertCommand,
@@ -141,13 +171,13 @@ Route::get('/test-ffmpeg', function () {
                 'success' => file_exists($testOutput),
                 'test_file' => basename($testFile)
             ];
-            
+
             // Cleanup
             if (file_exists($testOutput)) {
                 unlink($testOutput);
             }
         }
-        
+
         return response()->json([
             'ffmpeg_version' => $output,
             'conversion_test' => $conversionResult,
@@ -168,29 +198,15 @@ Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'ge
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);
 
-//recently played routes
-Route::post('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'store']);
-Route::get('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'index']);
-
 //albums
 Route::get('/albums', [\App\Http\Controllers\AlbumController::class, 'index']);
-Route::post('/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
 Route::get('/artists/{artistId}/albums', [\App\Http\Controllers\AlbumController::class, 'getAlbumsByArtist']);
 
-// Playlists
-Route::get('/playlists', [\App\Http\Controllers\PlaylistController::class, 'index']);
-Route::post('/playlists', [\App\Http\Controllers\PlaylistController::class, 'store']);
-Route::post('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'addSong']);
-Route::get('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'getSongs']);
-
-//ratings
-Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
-Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
 // Test database update endpoint
 Route::post('/test-db-update', function (Request $request) {
     try {
         $user = auth()->user();
-        
+
         if (!$user) {
             return response()->json(['error' => 'User not authenticated'], 401);
         }
@@ -233,11 +249,74 @@ Route::post('/test-db-update', function (Request $request) {
     }
 })->middleware('auth:sanctum');
 
+// Test login endpoint for debugging
+Route::post('/test-login-api', function (Request $request) {
+    try {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+
+        if (!auth()->attempt($request->only('email', 'password'))) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        $user = auth()->user();
+        $token = $user->createToken('test_token')->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login successful',
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
+
+// Test authentication debug endpoint
+Route::get('/debug-auth', function (Request $request) {
+    try {
+        $headers = $request->headers->all();
+        $bearerToken = $request->bearerToken();
+        $authorization = $request->header('Authorization');
+        
+        return response()->json([
+            'success' => true,
+            'debug_info' => [
+                'has_bearer_token' => !empty($bearerToken),
+                'bearer_token_length' => $bearerToken ? strlen($bearerToken) : 0,
+                'authorization_header' => $authorization,
+                'all_headers' => $headers,
+                'auth_check' => auth()->check(),
+                'sanctum_auth_check' => auth('sanctum')->check(),
+                'user_id' => auth()->id(),
+                'sanctum_user_id' => auth('sanctum')->id(),
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
+
 // Test current user data
 Route::get('/test-user-data', function (Request $request) {
     try {
         $user = auth()->user();
-        
+
         if (!$user) {
             return response()->json(['error' => 'User not authenticated'], 401);
         }
@@ -288,9 +367,12 @@ Route::get('/test-google-config', function () {
 
         // Check if required config is present
         $missing = [];
-        if (empty($config['client_id'])) $missing[] = 'GOOGLE_CLIENT_ID';
-        if (empty($config['client_secret'])) $missing[] = 'GOOGLE_CLIENT_SECRET';
-        if (empty($config['redirect_uri'])) $missing[] = 'GOOGLE_REDIRECT_URI';
+        if (empty($config['client_id']))
+            $missing[] = 'GOOGLE_CLIENT_ID';
+        if (empty($config['client_secret']))
+            $missing[] = 'GOOGLE_CLIENT_SECRET';
+        if (empty($config['redirect_uri']))
+            $missing[] = 'GOOGLE_REDIRECT_URI';
 
         return response()->json([
             'success' => empty($missing),
@@ -373,7 +455,7 @@ Route::middleware(['web'])->group(function () {
         try {
             $sessionId = $request->session()->getId();
             $sessionData = $request->session()->all();
-            
+
             return response()->json([
                 'success' => true,
                 'session_id' => $sessionId,
@@ -398,11 +480,11 @@ Route::middleware(['web'])->group(function () {
     Route::post('/test-login', function (Request $request) {
         try {
             $credentials = $request->only(['email', 'password']);
-            
+
             if (auth()->attempt($credentials)) {
                 $user = auth()->user();
                 $request->session()->regenerate();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Login successful',

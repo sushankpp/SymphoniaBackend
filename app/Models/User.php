@@ -62,4 +62,35 @@ class User extends Authenticatable
             'dob' => 'date',
         ];
     }
+
+    public function recentlyPlayed()
+    {
+        return $this->hasMany(RecentlyPlayed::class);
+    }
+
+    // Role-based helper methods
+    public function isArtist()
+    {
+        return $this->role === 'artist';
+    }
+
+    public function isAdmin()
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isRegularUser()
+    {
+        return $this->role === 'user';
+    }
+
+    public function canCreateAlbums()
+    {
+        return $this->isArtist() || $this->isAdmin();
+    }
+
+    public function canCreatePlaylists()
+    {
+        return $this->isRegularUser() || $this->isAdmin();
+    }
 }

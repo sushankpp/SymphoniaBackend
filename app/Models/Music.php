@@ -37,4 +37,9 @@ class Music extends Model
     {
         return $this->morphMany(Rating::class, 'rateable');
     }
+
+    public function recentlyPlayed()
+    {
+        return $this->hasMany(RecentlyPlayed::class, 'song_id');
+    }
 }

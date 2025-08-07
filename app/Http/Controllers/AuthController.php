@@ -38,45 +38,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // Session-based login function
-    public function sessionLogin(Request $request)
-    {
-        try {
-            $request->validate([
-                'email' => 'required|email',
-                'password' => 'required|string',
-            ]);
 
-            if (!auth()->attempt($request->only('email', 'password'))) {
-                return response()->json(['message' => 'Invalid credentials'], 401);
-            }
-
-            $user = auth()->user();
-            $request->session()->regenerate();
-
-            return response()->json([
-                'message' => 'Login successful',
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'profile_picture' => $user->profile_picture,
-                    'role' => $user->role,
-                    'is_email_verified' => $user->hasVerifiedEmail(),
-                    'created_at' => $user->created_at->toDateTimeString(),
-                    'gender' => $user->gender,
-                    'dob' => $user->dob ? $user->dob->toDateString() : null,
-                    'phone' => $user->phone,
-                    'bio' => $user->bio,
-                    'address' => $user->address,
-                    'status' => $user->status,
-                ]
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Session login failed: ' . $e->getMessage());
-            return response()->json(['message' => 'Login failed: ' . $e->getMessage()], 500);
-        }
-    }
 
     // Register function
     public function register(Request $request)
@@ -150,44 +112,7 @@ class AuthController extends Controller
         }
     }
 
-    // Check session authentication
-    public function checkSessionAuth(Request $request)
-    {
-        try {
-            if (auth()->check()) {
-                $user = auth()->user();
-                return response()->json([
-                    'authenticated' => true,
-                    'user' => [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'email' => $user->email,
-                        'profile_picture' => $user->profile_picture,
-                        'role' => $user->role,
-                        'is_email_verified' => $user->hasVerifiedEmail(),
-                        'created_at' => $user->created_at->toDateTimeString(),
-                        'gender' => $user->gender,
-                        'dob' => $user->dob ? $user->dob->toDateString() : null,
-                        'phone' => $user->phone,
-                        'bio' => $user->bio,
-                        'address' => $user->address,
-                        'status' => $user->status,
-                    ]
-                ]);
-            } else {
-                return response()->json([
-                    'authenticated' => false,
-                    'message' => 'User not authenticated'
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error('Session auth check failed: ' . $e->getMessage());
-            return response()->json([
-                'authenticated' => false,
-                'error' => 'Authentication check failed'
-            ], 500);
-        }
-    }
+
 
     // Update user profile
     public function updateProfile(Request $request)
@@ -353,12 +278,11 @@ class AuthController extends Controller
                 }
             }
 
-            // Log the user in and create session
-            Auth::login($user, remember: true);
-            $request->session()->regenerate();
+            // Create Bearer token for API authentication
+            $token = $user->createToken('google_auth_token')->plainTextToken;
 
-            // Redirect to frontend callback
-            return redirect()->away(env('FRONTEND_URL', 'http://localhost:5173') . '/auth/callback?success=true');
+            // Redirect to frontend callback with token
+            return redirect()->away(env('FRONTEND_URL', 'http://localhost:5173') . '/auth/callback?success=true&token=' . urlencode($token));
 
         } catch (\Throwable $e) {
             Log::error('Google Login Failed: ' . $e->getMessage());

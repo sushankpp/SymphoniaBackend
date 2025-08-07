@@ -12,8 +12,7 @@ class Album extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['title', 'cover_image_path', 'artist_id', 'release_date'];
-
+    protected $fillable = ['title', 'cover_image_path', 'artist_id', 'release_date', 'user_id'];
 
     public function artists()
     {
@@ -27,5 +26,10 @@ class Album extends Model
 
     public function ratings(){
         return $this->morphMany(Rating::class, 'rateable');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }

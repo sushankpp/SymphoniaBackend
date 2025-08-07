@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Music;
 use App\Models\UploadedMusic;
+use App\Services\RecommendationEngine;
 use FFMpeg\FFMpeg;
 use FFMpeg\Format\Audio\Aac;
 use FFMpeg\Coordinate\TimeCode;
@@ -309,6 +310,170 @@ class MusicController extends Controller
             'music' => $music
         ], 200);
 
+    }
+
+    public function getRecommendations(Request $request)
+    {
+        try {
+            $user_id = auth()->id(); // Will be null if not authenticated
+            $limit = $request->get('limit', 10);
+
+            $recommendationEngine = new RecommendationEngine();
+            $recommendations = $recommendationEngine->getRecommendations($user_id, $limit);
+
+            // Process recommendations to ensure proper JSON serialization
+            $processed_recommendations = [];
+            foreach ($recommendations as $rec) {
+                $song = $rec['song'];
+                $processed_recommendations[] = [
+                    'song' => [
+                        'id' => $song->id,
+                        'title' => $song->title,
+                        'genre' => $song->genre,
+                        'views' => $song->views,
+                        'file_path' => $song->file_path,
+                        'song_cover_path' => $song->song_cover_path,
+                        'artist' => $song->artist ? [
+                            'id' => $song->artist->id,
+                            'artist_name' => $song->artist->artist_name,
+                            'artist_image' => $song->artist->artist_image,
+                        ] : null,
+                        'album' => $song->album ? [
+                            'id' => $song->album->id,
+                            'title' => $song->album->title,
+                            'cover_image_path' => $song->album->cover_image_path,
+                        ] : null,
+                    ],
+                    'similarity_score' => $rec['similarity_score'] ?? $rec['trending_score'] ?? 0,
+                    'is_trending' => !$user_id // Flag to indicate if this is trending content
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'recommendations' => $processed_recommendations,
+                'is_authenticated' => (bool) $user_id
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Recommendation API error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to get recommendations',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getTopRecommendations(Request $request)
+    {
+        try {
+            $user_id = auth()->id(); // Will be null if not authenticated
+            $limit = $request->get('limit', 5);
+
+            $recommendationEngine = new RecommendationEngine();
+            $recommendations = $recommendationEngine->getRecommendations($user_id, $limit);
+
+            // Process recommendations to ensure proper JSON serialization
+            $processed_recommendations = [];
+            foreach ($recommendations as $rec) {
+                $song = $rec['song'];
+                $processed_recommendations[] = [
+                    'song' => [
+                        'id' => $song->id,
+                        'title' => $song->title,
+                        'genre' => $song->genre,
+                        'views' => $song->views,
+                        'file_path' => $song->file_path,
+                        'song_cover_path' => $song->song_cover_path,
+                        'artist' => $song->artist ? [
+                            'id' => $song->artist->id,
+                            'artist_name' => $song->artist->artist_name,
+                            'artist_image' => $song->artist->artist_image,
+                        ] : null,
+                        'album' => $song->album ? [
+                            'id' => $song->album->id,
+                            'title' => $song->album->title,
+                            'cover_image_path' => $song->album->cover_image_path,
+                        ] : null,
+                    ],
+                    'similarity_score' => $rec['similarity_score'] ?? $rec['trending_score'] ?? 0,
+                    'is_trending' => !$user_id
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'top_recommendations' => $processed_recommendations,
+                'is_authenticated' => (bool) $user_id
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Top Recommendation API error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to get top recommendations',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getTopArtists(Request $request)
+    {
+        try {
+            $user_id = auth()->id(); // Will be null if not authenticated
+            $limit = $request->get('limit', 5);
+
+            $recommendationEngine = new RecommendationEngine();
+            
+            if ($user_id) {
+                $top_artists = $recommendationEngine->getTopArtists($user_id, $limit);
+            } else {
+                $top_artists = $recommendationEngine->getGlobalTopArtists($limit);
+            }
+
+            // Process top artists to ensure proper JSON serialization
+            $processed_artists = [];
+            foreach ($top_artists as $artist_data) {
+                $artist = $artist_data['artist'];
+                $processed_artists[] = [
+                    'artist' => [
+                        'id' => $artist->id,
+                        'artist_name' => $artist->artist_name,
+                        'artist_image' => $artist->artist_image,
+                        'music_count' => $artist->music ? $artist->music->count() : 0,
+                    ],
+                    'score' => $artist_data['score'],
+                    'is_personalized' => (bool) $user_id
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'top_artists' => $processed_artists,
+                'is_authenticated' => (bool) $user_id
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Top Artists API error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to get top artists',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }
 

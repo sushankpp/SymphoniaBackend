@@ -9,27 +9,53 @@ class PlaylistController extends Controller
 {
     public function index()
     {
-        $playlists = Playlist::with('songs')->where('user_id', 1)->get();
+        $user_id = auth()->id();
+        $playlists = Playlist::with('songs')->where('user_id', $user_id)->get();
         return response()->json($playlists, 200);
     }
 
-
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'playlist_name' => 'required|string|max:255',
-        ]);
+        try {
+            $validated = $request->validate([
+                'playlist_name' => 'required|string|max:255',
+            ]);
 
-        $playlist = Playlist::create([
-            'user_id' => 1,
-            'playlist_name' => $validated['playlist_name'],
-        ]);
+            // Check if user can create playlists
+            $user = auth()->user();
+            if (!$user->canCreatePlaylists()) {
+                return response()->json(['error' => 'Artists cannot create playlists'], 403);
+            }
 
-        return response()->json($playlist, 201);
+            $playlist = Playlist::create([
+                'user_id' => $user->id,
+                'playlist_name' => $validated['playlist_name'],
+            ]);
+
+            return response()->json($playlist, 201);
+        } catch (\Exception $e) {
+            \Log::error('Playlist creation failed', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'user_id' => auth()->id(),
+                'request_data' => $request->all()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to create playlist',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function addSong(Request $request, Playlist $playlist)
     {
+        // Check if user owns this playlist
+        if ($playlist->user_id !== auth()->id()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $validated = $request->validate([
             'song_id' => 'required|exists:music,id',
         ]);
@@ -40,6 +66,11 @@ class PlaylistController extends Controller
 
     public function getSongs(Playlist $playlist)
     {
+        // Check if user owns this playlist
+        if ($playlist->user_id !== auth()->id()) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $songs = $playlist->songs;
 
         foreach ($songs as $song) {

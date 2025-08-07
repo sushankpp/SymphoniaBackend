@@ -15,6 +15,7 @@ return new class extends Migration {
             $table->string('title');
             $table->string('cover_image_path')->nullable();
             $table->foreignId('artist_id')->constrained('artists')->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->date('release_date');
             $table->timestamps();
         });

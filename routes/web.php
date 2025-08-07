@@ -71,47 +71,13 @@ Route::options('audio/compressed/{filename}', function () {
         ->header('Access-Control-Max-Age', '86400');
 });
 
-// Session-based authentication routes (moved from api.php for proper session support)
-Route::prefix('api')->group(function () {
-    Route::post('/auth/session/login', [AuthController::class, 'sessionLogin']);
-    Route::post('/auth/session/logout', [AuthController::class, 'logout']);
-    Route::get('/auth/session/user', [AuthController::class, 'getAuthenticatedUser']);
-    Route::get('/auth/session/check', [AuthController::class, 'checkSessionAuth']);
-    Route::put('/auth/session/user', [AuthController::class, 'updateProfile']);
-    Route::post('/auth/session/user', [AuthController::class, 'updateProfile']);
-    
-    // Alternative routes without CSRF
-    Route::get('/auth/session/user-data', [AuthController::class, 'getAuthenticatedUser']);
-    Route::post('/auth/session/update-profile', [AuthController::class, 'updateProfile']);
-});
+
 
 // Google OAuth routes
 Route::get('/api/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/api/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
-// Test session functionality
-Route::get('/api/test-session', function (Request $request) {
-    try {
-        $sessionId = $request->session()->getId();
-        $sessionData = $request->session()->all();
-        
-        return response()->json([
-            'success' => true,
-            'session_id' => $sessionId,
-            'session_data' => $sessionData,
-            'auth_check' => auth()->check(),
-            'user' => auth()->user() ? auth()->user()->only(['id', 'name', 'email']) : null,
-            'session_driver' => config('session.driver'),
-            'session_lifetime' => config('session.lifetime'),
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ], 500);
-    }
-});
+
 
 // Test user data in database
 Route::get('/api/test-user-data', function () {

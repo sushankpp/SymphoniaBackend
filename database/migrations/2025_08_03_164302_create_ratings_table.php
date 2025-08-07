@@ -13,11 +13,13 @@ return new class extends Migration {
         if (!Schema::hasTable('ratings')) {
             Schema::create('ratings', function (Blueprint $table) {
                 $table->id();
+                $table->unsignedBigInteger('user_id');
                 $table->unsignedBigInteger('rateable_id'); // ID of the item being rated (song, artist, album)
                 $table->string('rateable_type'); // Type of item being rated
                 $table->unsignedTinyInteger('rating');
                 $table->timestamps();
 
+                $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
                 $table->index(['rateable_id', 'rateable_type']); // polymorphic relation
             });
         }

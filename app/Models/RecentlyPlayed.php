@@ -10,10 +10,15 @@ class RecentlyPlayed extends Model
     use HasFactory;
 
     protected $table = 'recently_played';
-    protected $fillable = ['song_id'];
+    protected $fillable = ['user_id', 'song_id'];
 
     public function song()
     {
         return $this->belongsTo(Music::class, 'song_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }
