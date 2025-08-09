@@ -20,6 +20,46 @@ Route::get('/test-connection', function () {
     ]);
 });
 
+// Test role-requests endpoint without auth
+Route::get('/test-role-requests', function () {
+    try {
+        // Test if we can access the controller
+        $controller = new \App\Http\Controllers\RoleChangeRequestController();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Role requests endpoint is working',
+            'note' => 'The actual /role-requests endpoint requires authentication',
+            'auth_required' => true,
+            'controller_available' => true,
+            'endpoint_info' => [
+                'authenticated_endpoints' => [
+                    'GET /role-requests',
+                    'POST /role-requests',
+                    'GET /role-requests/{id}',
+                    'PATCH /role-requests/{id}/cancel'
+                ],
+                'admin_endpoints' => [
+                    'GET /admin/role-requests',
+                    'PATCH /admin/role-requests/{id}/approve',
+                    'PATCH /admin/role-requests/{id}/reject'
+                ]
+            ],
+            'instructions' => [
+                '1. Login first: POST /auth/login',
+                '2. Use token: Authorization: Bearer YOUR_TOKEN',
+                '3. Then access: GET /role-requests'
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
 //Auth Routes
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -38,23 +78,73 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/user', [AuthController::class, 'updateProfile']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
-    
+
     //recently played routes
     Route::post('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'store']);
     Route::get('/recently-played', [\App\Http\Controllers\RecentlyPlayedController::class, 'index']);
-    
+
     // Playlists (require authentication)
     Route::get('/playlists', [\App\Http\Controllers\PlaylistController::class, 'index']);
     Route::post('/playlists', [\App\Http\Controllers\PlaylistController::class, 'store']);
     Route::post('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'addSong']);
     Route::get('/playlists/{playlist}/songs', [\App\Http\Controllers\PlaylistController::class, 'getSongs']);
-    
+
     // Ratings (require authentication)
     Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
     Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
-    
+
     // Albums (store requires authentication)
     Route::post('/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
+
+    // Role change requests (require authentication)
+    Route::get('/role-requests', [\App\Http\Controllers\RoleChangeRequestController::class, 'index']);
+    Route::post('/role-requests', [\App\Http\Controllers\RoleChangeRequestController::class, 'store']);
+    Route::get('/role-requests/{id}', [\App\Http\Controllers\RoleChangeRequestController::class, 'show']);
+    Route::patch('/role-requests/{id}/cancel', [\App\Http\Controllers\RoleChangeRequestController::class, 'cancel']);
+});
+
+// Test admin access
+Route::get('/test-admin-access', function () {
+    $user = auth()->user();
+    return response()->json([
+        'success' => true,
+        'message' => 'Admin access test',
+        'authenticated' => auth()->check(),
+        'user' => $user ? [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'is_admin' => $user->isAdmin()
+        ] : null,
+        'correct_admin_urls' => [
+            'GET /api/admin/dashboard',
+            'GET /api/admin/users',
+            'GET /api/admin/role-requests'
+        ]
+    ]);
+})->middleware('auth:sanctum');
+
+// Admin Routes (require admin role)
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\AdminController::class, 'getDashboardStats']);
+    Route::get('/users', [\App\Http\Controllers\AdminController::class, 'getUsers']);
+    Route::get('/users/{id}', [\App\Http\Controllers\AdminController::class, 'getUserDetails']);
+    Route::patch('/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
+    Route::delete('/users/{id}', [\App\Http\Controllers\AdminController::class, 'deleteUser']);
+
+    Route::get('/role-requests', [\App\Http\Controllers\AdminController::class, 'getRoleChangeRequests']);
+    Route::patch('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
+    Route::patch('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
+});
+
+// Artist Routes (require artist role)
+Route::middleware(['auth:sanctum', 'artist'])->prefix('artist')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\ArtistDashboardController::class, 'getDashboardStats']);
+    Route::get('/music', [\App\Http\Controllers\ArtistDashboardController::class, 'getMyMusic']);
+    Route::get('/music/{id}/stats', [\App\Http\Controllers\ArtistDashboardController::class, 'getSongStats']);
+    Route::patch('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'updateMusic']);
+    Route::delete('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'deleteMusic']);
 });
 
 Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
@@ -290,7 +380,7 @@ Route::get('/debug-auth', function (Request $request) {
         $headers = $request->headers->all();
         $bearerToken = $request->bearerToken();
         $authorization = $request->header('Authorization');
-        
+
         return response()->json([
             'success' => true,
             'debug_info' => [

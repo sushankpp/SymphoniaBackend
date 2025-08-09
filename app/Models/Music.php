@@ -13,6 +13,9 @@ class Music extends Model
         'title',
         'song_cover_path',
         'file_path',
+        'compressed_file_path',
+        'cover_image',
+        'cover_image_path',
         'artist_id',
         'album_id',
         'genre',
@@ -20,6 +23,7 @@ class Music extends Model
         'lyrics',
         'views',
         'release_date',
+        'uploaded_by',
     ];
 
 
@@ -41,5 +45,10 @@ class Music extends Model
     public function recentlyPlayed()
     {
         return $this->hasMany(RecentlyPlayed::class, 'song_id');
+    }
+
+    public function uploader()
+    {
+        return $this->belongsTo(User::class, 'uploaded_by');
     }
 }

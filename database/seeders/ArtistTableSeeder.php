@@ -49,6 +49,12 @@ class ArtistTableSeeder extends Seeder
                 'artist_image' => 'artist_image/post-malone.jpg',
                 'created_at' => now(),
                 'updated_at' => now(),
+            ],
+            [
+                'artist_name' => 'Sushank Pandey',
+                'artist_image' => 'artist_image/sushank-pandey.jpg',
+                'created_at' => now(),
+                'updated_at' => now(),
             ]
         ]);
     }

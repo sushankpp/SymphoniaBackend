@@ -29,6 +29,9 @@ return new class extends Migration {
             if (!Schema::hasColumn('music', 'views')) {
                 $table->unsignedBigInteger('views')->default(0);
             }
+            if (!Schema::hasColumn('music', 'uploaded_by')) {
+                $table->foreignId('uploaded_by')->nullable()->constrained('users')->onDelete('set null');
+            }
         });
     }
 
@@ -38,7 +41,7 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::table('music', function (Blueprint $table) {
-            $table->dropColumn(['genre', 'description', 'release_date', 'lyrics', 'cover_image_path', 'views']);
+            $table->dropColumn(['genre', 'description', 'release_date', 'lyrics', 'cover_image_path', 'views', 'uploaded_by']);
         });
     }
 };

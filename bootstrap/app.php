@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Ensure session middleware is available for API routes
         $middleware->alias([
             'session' => \Illuminate\Session\Middleware\StartSession::class,
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
+            'artist' => \App\Http\Middleware\ArtistMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
