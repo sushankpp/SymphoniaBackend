@@ -51,6 +51,7 @@ class MusicController extends Controller
     public function getUploadedMusic(Request $request)
     {
         try {
+            // Get approved uploaded music
             $uploadedMusic = UploadedMusic::with([
                 'music' => function ($query) {
                     $query->with(['artist', 'album']);
@@ -60,12 +61,11 @@ class MusicController extends Controller
 
                 if ($music) {
                     $music->song_cover = asset('storage/' . $music->song_cover_path);
-
                     $music->file_path = asset('storage/' . $music->file_path);
 
-                                if ($music->artist && $music->artist->artist_image) {
-                $music->artist->artist_image = $this->generateAssetUrl($music->artist->artist_image);
-            }
+                    if ($music->artist && $music->artist->artist_image) {
+                        $music->artist->artist_image = $this->generateAssetUrl($music->artist->artist_image);
+                    }
 
                     if ($music->album) {
                         $music->album_title = $music->album->title;
@@ -75,6 +75,8 @@ class MusicController extends Controller
                     // Add uploaded music metadata
                     $music->uploaded_by = $uploadedItem->uploaded_by;
                     $music->uploaded_at = $uploadedItem->uploaded_at;
+                    $music->upload_status = 'approved'; // Mark as approved
+                    $music->request_id = null; // No request ID for approved music
 
                     // Add additional fields
                     $music->views = $music->views ?? 0;
@@ -139,7 +141,62 @@ class MusicController extends Controller
                 return $music;
             })->filter(); // Remove any null entries
 
-            return response()->json($uploadedMusic);
+            // Get music upload requests (pending, approved, rejected)
+            $uploadRequests = \App\Models\MusicUploadRequest::with(['user', 'artist', 'songArtist', 'album'])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($request) {
+                    // Create a music-like object from the request
+                    $music = new \stdClass();
+                    $music->id = 'request_' . $request->id; // Unique ID for requests
+                    $music->title = $request->song_title;
+                    $music->song_cover = asset('storage/' . $request->song_cover_path);
+                    $music->file_path = asset('storage/' . $request->file_path);
+                    $music->genre = $request->genre ?? '';
+                    $music->description = $request->description ?? '';
+                    $music->lyrics = $request->lyrics ?? '';
+                    $music->release_date = $request->release_date;
+                    $music->views = 0; // No views for pending requests
+                    $music->uploaded_by = $request->user_id;
+                    $music->uploaded_at = $request->created_at;
+                    $music->upload_status = $request->status; // pending, approved, rejected
+                    $music->request_id = $request->id;
+                    $music->admin_notes = $request->admin_notes;
+
+                    // Artist information
+                    if ($request->songArtist) {
+                        $music->artist = $request->songArtist;
+                        if ($music->artist->artist_image) {
+                            $music->artist->artist_image = $this->generateAssetUrl($music->artist->artist_image);
+                        }
+                    }
+
+                    // Album information
+                    if ($request->album) {
+                        $music->album = $request->album;
+                        $music->album_title = $request->album->title;
+                        $music->album_cover = asset('storage/' . $request->album->cover);
+                    }
+
+                    // Add user information
+                    $music->uploader = $request->user;
+
+                    // File size information for temporary files
+                    $relativePath = str_replace(asset('storage/'), '', $music->file_path);
+                    if (File::exists(storage_path('app/public/' . $relativePath))) {
+                        $fileSize = File::size(storage_path('app/public/' . $relativePath));
+                        $music->file_size = $this->formatBytes($fileSize);
+                    }
+
+                    return $music;
+                });
+
+            // Combine both collections and sort by upload date
+            $allMusic = $uploadedMusic->concat($uploadRequests)
+                ->sortByDesc('uploaded_at')
+                ->values();
+
+            return response()->json($allMusic);
         } catch (Exception $e) {
             Log::error('Error fetching uploaded music', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to fetch uploaded music'], 500);
@@ -149,12 +206,19 @@ class MusicController extends Controller
     public function uploadMusic(Request $request)
     {
         try {
-
-
+            $user = auth()->user();
+            
+            // If user is an artist, redirect to upload request system
+            if ($user && $user->role === 'artist') {
+                $uploadRequestController = new \App\Http\Controllers\MusicUploadRequestController();
+                return $uploadRequestController->submit($request);
+            }
+            
+            // For admins, continue with direct upload
             $validated = $request->validate([
                 'audio_file' => 'required|file|mimes:mp3,wav',
                 'song_title' => 'required|string|max:255',
-                'artist_id' => 'nullable|exists:artists,id', // Make it optional since we'll auto-detect
+                'artist_id' => 'nullable|exists:artists,id',
                 'genre' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'release_date' => 'nullable|date',
@@ -171,7 +235,7 @@ class MusicController extends Controller
             $uniqueFilename = $originalName . '_' . time() . '.' . $originalExtension;
             $originalAudioPath = $request->file('audio_file')->storeAs('audios/original', $uniqueFilename, 'public');
 
-            $coverPath = $request->file('cover_image')->store('songs_cover', 'public');
+            $coverPath = $request->file('cover_image')->store('albums_cover', 'public');
 
             // Auto-detect artist ID based on authenticated user
             $artistId = $validated['artist_id'] ?? null;
@@ -189,6 +253,10 @@ class MusicController extends Controller
             if (!$artistId) {
                 $artistId = $validated['artist_id'] ?? Artist::first()->id ?? 1;
             }
+            
+            // Get the user ID for the artist
+            $artist = Artist::find($artistId);
+            $uploadedByUserId = $artist ? $artist->user_id : (auth()->id() ?? 1);
 
             $this->ensureCompressedDirectoryExists();
 
@@ -221,7 +289,7 @@ class MusicController extends Controller
                 'release_date' => $validated['release_date'] ?? null,
                 'lyrics' => $validated['lyrics'] ?? null,
                 'views' => 0, // Initialize views to 0
-                'uploaded_by' => auth()->id() ?? $request->input('uploaded_by', 'admin'), // Use authenticated user or provided user
+                'uploaded_by' => $uploadedByUserId, // Automatically assign to the artist's user ID
             ]);
 
             UploadedMusic::create([

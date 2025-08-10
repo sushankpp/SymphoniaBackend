@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::get('/role-requests', [\App\Http\Controllers\AdminController::class, 'getRoleChangeRequests']);
                Route::patch('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
            Route::patch('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
+           Route::get('/music-upload-requests', [\App\Http\Controllers\AdminController::class, 'getMusicUploadRequests']);
            Route::get('/test-role-change/{userId}', [\App\Http\Controllers\AdminController::class, 'testRoleChange']);
 });
 
@@ -293,6 +294,22 @@ Route::get('/test-ffmpeg', function () {
 Route::get('/music', \App\Http\Controllers\MusicController::class);
 Route::post('/music/{id}/play', [\App\Http\Controllers\MusicController::class, 'playSong']);
 Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic'])->middleware('auth:sanctum');
+
+// Music upload request routes (for artists)
+Route::middleware(['auth:sanctum', 'artist'])->group(function () {
+    Route::post('/music-upload-requests', [\App\Http\Controllers\MusicUploadRequestController::class, 'submit']);
+    Route::get('/music-upload-requests', [\App\Http\Controllers\MusicUploadRequestController::class, 'myRequests']);
+    Route::delete('/music-upload-requests/{id}', [\App\Http\Controllers\MusicUploadRequestController::class, 'cancel']);
+    Route::get('/music-upload-requests/{id}', [\App\Http\Controllers\MusicUploadRequestController::class, 'show']);
+});
+
+// Music upload request admin routes
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('/admin/music-upload-requests', [\App\Http\Controllers\MusicUploadRequestController::class, 'index']);
+    Route::get('/admin/music-upload-requests/{id}', [\App\Http\Controllers\MusicUploadRequestController::class, 'show']);
+    Route::post('/admin/music-upload-requests/{id}/approve', [\App\Http\Controllers\MusicUploadRequestController::class, 'approve']);
+    Route::post('/admin/music-upload-requests/{id}/reject', [\App\Http\Controllers\MusicUploadRequestController::class, 'reject']);
+});
 Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);

@@ -422,4 +422,45 @@ class AdminController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get music upload requests for admin dashboard
+     */
+    public function getMusicUploadRequests(Request $request)
+    {
+        try {
+            $user = auth()->user();
+            
+            if ($user->role !== 'admin') {
+                return response()->json([
+                    'error' => 'Only admins can view music upload requests'
+                ], 403);
+            }
+
+            $query = \App\Models\MusicUploadRequest::with(['user', 'artist', 'songArtist', 'album']);
+
+            // Filter by status
+            if ($request->has('status')) {
+                $query->where('status', $request->status);
+            }
+
+            // Filter by artist
+            if ($request->has('artist_id')) {
+                $query->where('artist_id', $request->artist_id);
+            }
+
+            $requests = $query->orderBy('created_at', 'desc')->paginate($request->get('per_page', 15));
+
+            return response()->json([
+                'success' => true,
+                'requests' => $requests
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to fetch music upload requests', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to fetch music upload requests'
+            ], 500);
+        }
+    }
 }
