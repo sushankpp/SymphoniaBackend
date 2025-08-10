@@ -10,9 +10,15 @@ class Artist extends Model
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
         'artist_name',
         'artist_image'
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 
     public function music(): \Illuminate\Database\Eloquent\Relations\HasMany
     {

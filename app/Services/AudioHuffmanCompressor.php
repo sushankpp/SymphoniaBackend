@@ -22,6 +22,24 @@ class AudioHuffmanCompressor
         }
     }
 
+    private function le16_to_signed($val) {
+        // $val from unpack('v') -> 0..65535, convert to signed -32768..32767
+        if ($val & 0x8000) {
+            return $val - 0x10000;
+        }
+        return $val;
+    }
+
+    private function signed_to_le16($val) {
+        // convert signed -32768..32767 to 0..65535 for pack('v')
+        return $val & 0xFFFF;
+    }
+
+    private function u32_to_signed($u) {
+        if ($u & 0x80000000) return $u - 0x100000000;
+        return $u;
+    }
+
     public function compress($inputPath, $outputPath)
     {
         try {
@@ -151,7 +169,7 @@ class AudioHuffmanCompressor
         $totalBytes = filesize($rawPath);
         $processedBytes = 0;
         $lastProgress = 0;
-        $previousSample = 0;
+        $previousSamples = [0, 0]; // Initialize for stereo (left, right channels)
 
         Log::info('Starting audio data compression...');
 
@@ -159,15 +177,12 @@ class AudioHuffmanCompressor
             $chunk = fread($handle, $this->chunkSize);
             if ($chunk === false || empty($chunk)) break;
 
-            $compressedBlock = $this->compressBlock($chunk, $previousSample);
+            $compressedBlock = $this->compressBlock($chunk, $previousSamples);
             $compressedData['blocks'][] = $compressedBlock;
             
-            // Update previous sample for next block
-            if (!empty($compressedBlock['samples'])) {
-                $lastSamples = array_slice($compressedBlock['samples'], -1);
-                if (!empty($lastSamples)) {
-                    $previousSample = $this->reconstructSample($lastSamples[0], $previousSample);
-                }
+            // Update previous samples for next block
+            if (isset($compressedBlock['last_samples'])) {
+                $previousSamples = $compressedBlock['last_samples'];
             }
 
             $processedBytes += strlen($chunk);
@@ -188,30 +203,64 @@ class AudioHuffmanCompressor
         return $compressedData;
     }
 
-    private function compressBlock($chunk, $previousSample)
+    private function compressBlock($chunk, $previousSamples)
     {
-        $samples = [];
-        $deltas = [];
-        
-        // Convert bytes to 16-bit samples
-        for ($i = 0; $i < strlen($chunk) - 1; $i += 2) {
-            if ($i + 1 >= strlen($chunk)) break;
-            
-            $sample = unpack('s', substr($chunk, $i, 2))[1];
-            $samples[] = $sample;
-            
-            // Calculate delta (difference from previous sample)
-            $delta = $sample - $previousSample;
-            $deltas[] = $delta;
-            $previousSample = $sample;
+        // $previousSamples is array per channel, e.g. [0 => prevLeft, 1 => prevRight]
+        $samplesPerChannel = []; // arrays of samples per channel
+        $deltasPerChannel = [];
+
+        $len = strlen($chunk);
+        // each sample is 2 bytes; for stereo data, channel count must be known externally (we use 2)
+        $channels = 2;
+
+        for ($i = 0; $i < $len - 1; $i += 2 * $channels) {
+            // For safety, if chunk truncated, break
+            if ($i + 2 * ($channels - 1) + 1 >= $len) break;
+
+            for ($ch = 0; $ch < $channels; $ch++) {
+                $offset = $i + ($ch * 2);
+                $raw = substr($chunk, $offset, 2);
+                $u = unpack('v', $raw)[1];               // little-endian unsigned
+                $sample = $this->le16_to_signed($u);    // signed int16
+                $samplesPerChannel[$ch][] = $sample;
+
+                $delta = $sample - ($previousSamples[$ch] ?? 0);
+                // keep delta as signed int32 to avoid overflow
+                $deltasPerChannel[$ch][] = $delta;
+                $previousSamples[$ch] = $sample;
+            }
         }
 
-        // Apply Run Length Encoding to deltas
-        $compressedDeltas = $this->runLengthEncode($deltas);
-        
+        // Apply RLE per channel on $deltasPerChannel
+        $compressed = [];
+        foreach ($deltasPerChannel as $ch => $deltas) {
+            $runs = [];
+            if (empty($deltas)) {
+                $compressed[$ch] = $runs;
+                continue;
+            }
+            $cur = $deltas[0];
+            $count = 1;
+            for ($i = 1; $i < count($deltas); $i++) {
+                if ($deltas[$i] === $cur && $count < 255) {
+                    $count++;
+                } else {
+                    $runs[] = ['value' => $cur, 'count' => $count];
+                    $cur = $deltas[$i];
+                    $count = 1;
+                }
+            }
+            $runs[] = ['value' => $cur, 'count' => $count];
+            $compressed[$ch] = $runs;
+        }
+
         return [
-            'samples' => $compressedDeltas,
-            'block_size' => count($samples)
+            'channels' => $channels,
+            'block_size' => count($samplesPerChannel[0] ?? []),
+            'samples_counts' => array_map(function($c){ return count($c); }, $samplesPerChannel),
+            'runs' => $compressed,
+            'last_samples' => array_map(function($arr){ return end($arr) ?: 0; }, $samplesPerChannel),
+            'previousSamples' => $previousSamples
         ];
     }
 
@@ -252,11 +301,6 @@ class AudioHuffmanCompressor
         return $decoded;
     }
 
-    private function reconstructSample($deltaRun, $previousSample)
-    {
-        return $previousSample + $deltaRun['value'];
-    }
-
     private function saveCompressedData($compressedData, $outputPath)
     {
         $handle = fopen($outputPath, 'wb');
@@ -273,29 +317,37 @@ class AudioHuffmanCompressor
 
     private function serializeToBinary($data)
     {
-        // Use efficient binary serialization instead of JSON
         $binary = '';
-        
-        // Write metadata
-        $metadata = $data['metadata'];
-        $binary .= pack('N', $metadata['sample_rate']);
-        $binary .= pack('n', $metadata['channels']);
-        $binary .= pack('n', $metadata['bits_per_sample']);
-        
-        // Write number of blocks
+
+        $meta = $data['metadata'];
+        // sample rate (uint32), channels (uint16), bits (uint16)
+        $binary .= pack('N', $meta['sample_rate']);
+        $binary .= pack('n', $meta['channels']);
+        $binary .= pack('n', $meta['bits_per_sample']);
+
+        // number of blocks (uint32)
         $binary .= pack('N', count($data['blocks']));
-        
-        // Write blocks
+
         foreach ($data['blocks'] as $block) {
+            // block_size (uint32)
             $binary .= pack('N', $block['block_size']);
-            $binary .= pack('N', count($block['samples']));
-            
-            foreach ($block['samples'] as $run) {
-                $binary .= pack('s', $run['value']); // 16-bit signed
-                $binary .= pack('C', $run['count']); // 8-bit unsigned
+            // channels (uint16) and samples_per_channel (uint32 per channel)
+            $binary .= pack('n', $block['channels']);
+            foreach ($block['samples_counts'] as $spc) {
+                $binary .= pack('N', $spc);
+            }
+
+            // For each channel, write number of runs (uint32) then runs (value:int32, count:uint8)
+            foreach ($block['runs'] as $chRuns) {
+                $binary .= pack('N', count($chRuns));
+                foreach ($chRuns as $run) {
+                    // Use unsigned 32-bit little-endian for consistency
+                    $binary .= pack('V', $run['value'] & 0xFFFFFFFF); // unsigned 32-bit little-endian
+                    $binary .= pack('C', $run['count']);
+                }
             }
         }
-        
+
         return $binary;
     }
 
@@ -331,17 +383,32 @@ class AudioHuffmanCompressor
         $blocks = [];
         for ($b = 0; $b < $numBlocks; $b++) {
             $blockSize = unpack('N', fread($handle, 4))[1];
-            $numRuns = unpack('N', fread($handle, 4))[1];
+            $blockChannels = unpack('n', fread($handle, 2))[1];
             
-            $samples = [];
-            for ($r = 0; $r < $numRuns; $r++) {
-                $value = unpack('s', fread($handle, 2))[1];
-                $count = unpack('C', fread($handle, 1))[1];
-                $samples[] = ['value' => $value, 'count' => $count];
+            // Read samples counts per channel
+            $samplesCounts = [];
+            for ($ch = 0; $ch < $blockChannels; $ch++) {
+                $samplesCounts[] = unpack('N', fread($handle, 4))[1];
+            }
+            
+            // Read runs per channel
+            $runs = [];
+            for ($ch = 0; $ch < $blockChannels; $ch++) {
+                $numRuns = unpack('N', fread($handle, 4))[1];
+                $channelRuns = [];
+                for ($r = 0; $r < $numRuns; $r++) {
+                    $v = unpack('V', fread($handle, 4))[1]; // unsigned 32-bit little-endian
+                    $value = $this->u32_to_signed($v); // convert to signed
+                    $count = unpack('C', fread($handle, 1))[1];
+                    $channelRuns[] = ['value' => $value, 'count' => $count];
+                }
+                $runs[] = $channelRuns;
             }
             
             $blocks[] = [
-                'samples' => $samples,
+                'channels' => $blockChannels,
+                'samples_counts' => $samplesCounts,
+                'runs' => $runs,
                 'block_size' => $blockSize
             ];
         }
@@ -356,37 +423,32 @@ class AudioHuffmanCompressor
     {
         $rawPath = $this->tempDir . '/decompressed_raw_' . uniqid() . '.raw';
         $handle = fopen($rawPath, 'wb');
-        
-        if (!$handle) {
-            throw new \Exception("Cannot create decompressed file");
-        }
+        if (!$handle) throw new \Exception("Cannot create decompressed file");
 
-        $previousSample = 0;
-        $totalBlocks = count($compressedData['blocks']);
-        $processedBlocks = 0;
-
-        Log::info('Starting audio decompression...');
+        $channels = $compressedData['metadata']['channels'] ?? 2;
+        $previous = array_fill(0, $channels, 0);
 
         foreach ($compressedData['blocks'] as $block) {
-            // Decompress deltas using RLE
-            $deltas = $this->runLengthDecode($block['samples']);
-            
-            // Reconstruct original samples from deltas
-            $binaryData = '';
-            foreach ($deltas as $delta) {
-                $sample = $previousSample + $delta;
-                $sample = max(-32768, min(32767, $sample)); // Clamp to 16-bit range
-                $binaryData .= pack('s', $sample);
-                $previousSample = $sample;
+            // for each channel, expand runs into deltas
+            $deltasPerChannel = [];
+            foreach ($block['samples_counts'] as $chIndex => $spc) {
+                $runs = $block['samples'][$chIndex] ?? $block['runs'][$chIndex];
+                $deltasPerChannel[$chIndex] = $this->runLengthDecode($runs); // runLengthDecode returns array of ints
             }
-            
-            fwrite($handle, $binaryData);
-            
-            $processedBlocks++;
-            if ($processedBlocks % 10 === 0) {
-                $progress = round(($processedBlocks / $totalBlocks) * 100);
-                Log::info("Decompression progress: {$progress}%");
+
+            $blockSamples = $block['block_size']; // samples per channel
+            // rebuild interleaved binary
+            $binary = '';
+            for ($i = 0; $i < $blockSamples; $i++) {
+                for ($ch = 0; $ch < $channels; $ch++) {
+                    $delta = $deltasPerChannel[$ch][$i] ?? 0;
+                    $sample = $previous[$ch] + $delta;
+                    $sample = max(-32768, min(32767, $sample));
+                    $binary .= pack('v', $this->signed_to_le16($sample)); // little-endian 16
+                    $previous[$ch] = $sample;
+                }
             }
+            fwrite($handle, $binary);
         }
 
         fclose($handle);

@@ -10,7 +10,7 @@ class ArtistController extends Controller
     public function index(Request $request)
     {
         $artists = Artist::withCount('music')->get()->map(function ($item) {
-            $item->artist_image = asset('storage/' . $item->artist_image);
+            $item->artist_image = $this->generateAssetUrl($item->artist_image);
             return $item;
         });
 
@@ -31,7 +31,7 @@ class ArtistController extends Controller
         $artistData = [
             'id' => $artist->id,
             'artist_name' => $artist->artist_name,
-            'artist_image' => asset('storage/' . $artist->artist_image),
+                            'artist_image' => $this->generateAssetUrl($artist->artist_image),
             'song_cover' => asset('storage/' . $artist->song_cover_path),
             'song_count' => $songCount,
         ];
@@ -55,5 +55,23 @@ class ArtistController extends Controller
             'artist' => $artistData,
             'songs' => $songsData
         ]);
+    }
+
+    /**
+     * Generate asset URL safely (handles both full URLs and relative paths)
+     */
+    private function generateAssetUrl($path)
+    {
+        if (!$path) {
+            return null;
+        }
+        
+        // Check if it's already a full URL
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+        
+        // Generate asset URL for relative path
+        return asset('storage/' . $path);
     }
 }

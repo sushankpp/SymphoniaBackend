@@ -71,6 +71,9 @@ Route::get('/recommendations', [\App\Http\Controllers\MusicController::class, 'g
 Route::get('/top-recommendations', [\App\Http\Controllers\MusicController::class, 'getTopRecommendations']);
 Route::get('/top-artists', [\App\Http\Controllers\MusicController::class, 'getTopArtists']);
 
+// Public ratings (viewable by everyone)
+Route::get('/public/ratings/{id}', [\App\Http\Controllers\RatingController::class, 'show']);
+
 //authenticated Routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/user', [AuthController::class, 'getAuthenticatedUser']);
@@ -92,6 +95,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Ratings (require authentication)
     Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
     Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
+    Route::get('/ratings/{id}', [\App\Http\Controllers\RatingController::class, 'show']);
 
     // Albums (store requires authentication)
     Route::post('/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
@@ -134,18 +138,23 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::delete('/users/{id}', [\App\Http\Controllers\AdminController::class, 'deleteUser']);
 
     Route::get('/role-requests', [\App\Http\Controllers\AdminController::class, 'getRoleChangeRequests']);
-    Route::patch('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
-    Route::patch('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
+               Route::patch('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
+           Route::patch('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
+           Route::get('/test-role-change/{userId}', [\App\Http\Controllers\AdminController::class, 'testRoleChange']);
 });
 
-// Artist Routes (require artist role)
-Route::middleware(['auth:sanctum', 'artist'])->prefix('artist')->group(function () {
-    Route::get('/dashboard', [\App\Http\Controllers\ArtistDashboardController::class, 'getDashboardStats']);
-    Route::get('/music', [\App\Http\Controllers\ArtistDashboardController::class, 'getMyMusic']);
-    Route::get('/music/{id}/stats', [\App\Http\Controllers\ArtistDashboardController::class, 'getSongStats']);
-    Route::patch('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'updateMusic']);
-    Route::delete('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'deleteMusic']);
-});
+       // Artist Routes (require artist role)
+       Route::middleware(['auth:sanctum', 'artist'])->prefix('artist')->group(function () {
+           Route::get('/profile', [\App\Http\Controllers\ArtistDashboardController::class, 'getProfile']);
+           Route::patch('/profile', [\App\Http\Controllers\ArtistDashboardController::class, 'updateProfile']);
+           Route::get('/dashboard', [\App\Http\Controllers\ArtistDashboardController::class, 'getDashboardStats']);
+           Route::get('/music', [\App\Http\Controllers\ArtistDashboardController::class, 'getMyMusic']);
+           Route::get('/music-simple', [\App\Http\Controllers\ArtistDashboardController::class, 'getMyMusicSimple']);
+           Route::get('/music/{id}/stats', [\App\Http\Controllers\ArtistDashboardController::class, 'getSongStats']);
+           Route::patch('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'updateMusic']);
+           Route::delete('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'deleteMusic']);
+           Route::get('/debug-music', [\App\Http\Controllers\ArtistDashboardController::class, 'debugMusicOwnership']);
+       });
 
 Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 Route::post('/auth/email/verification-notification', [AuthController::class, 'sendVerificationEmail'])->name('verification.send');
@@ -283,7 +292,7 @@ Route::get('/test-ffmpeg', function () {
 
 Route::get('/music', \App\Http\Controllers\MusicController::class);
 Route::post('/music/{id}/play', [\App\Http\Controllers\MusicController::class, 'playSong']);
-Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic']);
+Route::post('/upload-music', [\App\Http\Controllers\MusicController::class, 'uploadMusic'])->middleware('auth:sanctum');
 Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
 Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController::class, 'getSongs']);

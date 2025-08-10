@@ -42,6 +42,34 @@ class Music extends Model
         return $this->morphMany(Rating::class, 'rateable');
     }
 
+    /**
+     * Get all ratings for this music (handles both full class name and simple type)
+     */
+    public function getAllRatings()
+    {
+        return Rating::where('rateable_id', $this->id)
+            ->where(function($query) {
+                $query->where('rateable_type', 'App\Models\Music')
+                      ->orWhere('rateable_type', 'song');
+            });
+    }
+
+    /**
+     * Get the count of all ratings for this music
+     */
+    public function getAllRatingsCount()
+    {
+        return $this->getAllRatings()->count();
+    }
+
+    /**
+     * Get the average rating for this music
+     */
+    public function getAllRatingsAvg()
+    {
+        return $this->getAllRatings()->avg('rating') ?? 0;
+    }
+
     public function recentlyPlayed()
     {
         return $this->hasMany(RecentlyPlayed::class, 'song_id');

@@ -28,30 +28,6 @@ class AlbumTableSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
-                'name' => 'Ed Sheeran',
-                'email' => 'edsheeran@example.com',
-                'password' => bcrypt('password'),
-                'role' => 'artist',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Taylor Swift',
-                'email' => 'taylorswift@example.com',
-                'password' => bcrypt('password'),
-                'role' => 'artist',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Drake',
-                'email' => 'drake@example.com',
-                'password' => bcrypt('password'),
-                'role' => 'artist',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
                 'name' => 'Post Malone',
                 'email' => 'postmalone@example.com',
                 'password' => bcrypt('password'),
@@ -107,38 +83,20 @@ class AlbumTableSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
-                'title' => '÷ (Divide)',
-                'cover_image_path' => 'albums_cover/weekend1.jpg',
-                'artist_id' => 3,
-                'user_id' => $artistUserIds[2], // Ed Sheeran
-                'release_date' => '2017-03-03',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'title' => '1989',
-                'cover_image_path' => 'albums_cover/adele.webp',
-                'artist_id' => 4,
-                'user_id' => $artistUserIds[3], // Taylor Swift
-                'release_date' => '2014-10-27',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'title' => 'Scorpion',
-                'cover_image_path' => 'albums_cover/weekend1.jpg',
-                'artist_id' => 5,
-                'user_id' => $artistUserIds[4], // Drake
-                'release_date' => '2018-06-29',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
                 'title' => 'Hollywood\'s Bleeding',
                 'cover_image_path' => 'albums_cover/adele30.jpg',
-                'artist_id' => 6,
-                'user_id' => $artistUserIds[5], // Post Malone
+                'artist_id' => 3,
+                'user_id' => $artistUserIds[2], // Post Malone
                 'release_date' => '2019-09-06',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'title' => 'Beerbongs & Bentleys',
+                'cover_image_path' => 'albums_cover/weekend1.jpg',
+                'artist_id' => 3,
+                'user_id' => $artistUserIds[2], // Post Malone
+                'release_date' => '2018-04-27',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]

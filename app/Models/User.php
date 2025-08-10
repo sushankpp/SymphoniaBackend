@@ -78,6 +78,11 @@ class User extends Authenticatable
         return $this->hasMany(Music::class, 'uploaded_by');
     }
 
+    public function artist()
+    {
+        return $this->hasOne(Artist::class);
+    }
+
     // Role-based helper methods
     public function isArtist()
     {

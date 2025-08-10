@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Music;
 use App\Models\UploadedMusic;
+use App\Models\Artist;
 use App\Services\RecommendationEngine;
 use FFMpeg\FFMpeg;
 use FFMpeg\Format\Audio\Aac;
@@ -26,13 +27,7 @@ class MusicController extends Controller
 
             // Process artist image
             if ($item->artist && $item->artist->artist_image) {
-                if (str_starts_with($item->artist->artist_image, 'http://')) {
-                } else if (str_starts_with($item->artist->artist_image, 'storage/')) {
-                    $path = str_replace('storage/', '', $item->artist->artist_image);
-                    $item->artist->artist_image = asset('storage/' . $path);
-                } else {
-                    $item->artist->artist_image = asset('storage/' . $item->artist->artist_image);
-                }
+                $item->artist->artist_image = $this->generateAssetUrl($item->artist->artist_image);
             }
 
             if ($item->album) {
@@ -68,15 +63,9 @@ class MusicController extends Controller
 
                     $music->file_path = asset('storage/' . $music->file_path);
 
-                    if ($music->artist && $music->artist->artist_image) {
-                        if (str_starts_with($music->artist->artist_image, 'http://')) {
-                        } else if (str_starts_with($music->artist->artist_image, 'storage/')) {
-                            $path = str_replace('storage/', '', $music->artist->artist_image);
-                            $music->artist->artist_image = asset('storage/' . $path);
-                        } else {
-                            $music->artist->artist_image = asset('storage/' . $music->artist->artist_image);
-                        }
-                    }
+                                if ($music->artist && $music->artist->artist_image) {
+                $music->artist->artist_image = $this->generateAssetUrl($music->artist->artist_image);
+            }
 
                     if ($music->album) {
                         $music->album_title = $music->album->title;
@@ -161,10 +150,11 @@ class MusicController extends Controller
     {
         try {
 
+
             $validated = $request->validate([
                 'audio_file' => 'required|file|mimes:mp3,wav',
                 'song_title' => 'required|string|max:255',
-                'artist_id' => 'required|exists:artists,id',
+                'artist_id' => 'nullable|exists:artists,id', // Make it optional since we'll auto-detect
                 'genre' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'release_date' => 'nullable|date',
@@ -182,6 +172,23 @@ class MusicController extends Controller
             $originalAudioPath = $request->file('audio_file')->storeAs('audios/original', $uniqueFilename, 'public');
 
             $coverPath = $request->file('cover_image')->store('songs_cover', 'public');
+
+            // Auto-detect artist ID based on authenticated user
+            $artistId = $validated['artist_id'] ?? null;
+            if (!$artistId && auth()->check()) {
+                $user = auth()->user();
+                if ($user->role === 'artist') {
+                    $artist = Artist::where('user_id', $user->id)->first();
+                    if ($artist) {
+                        $artistId = $artist->id;
+                    }
+                }
+            }
+            
+            // If still no artist ID, use the provided one or default to first artist
+            if (!$artistId) {
+                $artistId = $validated['artist_id'] ?? Artist::first()->id ?? 1;
+            }
 
             $this->ensureCompressedDirectoryExists();
 
@@ -207,13 +214,14 @@ class MusicController extends Controller
                 'title' => $validated['song_title'],
                 'file_path' => $compressedAudioPath,
                 'song_cover_path' => $coverPath,
-                'artist_id' => $validated['artist_id'],
+                'artist_id' => $artistId, // Use the auto-detected artist ID
                 'album_id' => $request->input('album_id') ?? null,
                 'genre' => $validated['genre'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'release_date' => $validated['release_date'] ?? null,
                 'lyrics' => $validated['lyrics'] ?? null,
                 'views' => 0, // Initialize views to 0
+                'uploaded_by' => auth()->id() ?? $request->input('uploaded_by', 'admin'), // Use authenticated user or provided user
             ]);
 
             UploadedMusic::create([
@@ -241,7 +249,17 @@ class MusicController extends Controller
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Validation failed', ['errors' => $e->errors()]);
-            return response()->json(['error' => 'Validation failed', 'details' => $e->errors()], 422);
+            return response()->json([
+                'error' => 'Validation failed', 
+                'details' => $e->errors(),
+                'message' => 'Please check that all required fields are provided: audio_file, song_title, artist_id, and cover_image'
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Music upload failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Upload failed',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -336,7 +354,7 @@ class MusicController extends Controller
                         'artist' => $song->artist ? [
                             'id' => $song->artist->id,
                             'artist_name' => $song->artist->artist_name,
-                            'artist_image' => $song->artist->artist_image,
+                            'artist_image' => $this->generateAssetUrl($song->artist->artist_image),
                         ] : null,
                         'album' => $song->album ? [
                             'id' => $song->album->id,
@@ -393,7 +411,7 @@ class MusicController extends Controller
                         'artist' => $song->artist ? [
                             'id' => $song->artist->id,
                             'artist_name' => $song->artist->artist_name,
-                            'artist_image' => $song->artist->artist_image,
+                            'artist_image' => $this->generateAssetUrl($song->artist->artist_image),
                         ] : null,
                         'album' => $song->album ? [
                             'id' => $song->album->id,
@@ -448,7 +466,7 @@ class MusicController extends Controller
                     'artist' => [
                         'id' => $artist->id,
                         'artist_name' => $artist->artist_name,
-                        'artist_image' => $artist->artist_image,
+                        'artist_image' => $this->generateAssetUrl($artist->artist_image),
                         'music_count' => $artist->music ? $artist->music->count() : 0,
                     ],
                     'score' => $artist_data['score'],
@@ -474,6 +492,24 @@ class MusicController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Generate asset URL safely (handles both full URLs and relative paths)
+     */
+    private function generateAssetUrl($path)
+    {
+        if (!$path) {
+            return null;
+        }
+        
+        // Check if it's already a full URL
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+        
+        // Generate asset URL for relative path
+        return asset('storage/' . $path);
     }
 }
 

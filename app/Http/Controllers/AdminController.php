@@ -42,9 +42,14 @@ class AdminController extends Controller
 
             // Add profile picture URLs
             $users->getCollection()->transform(function ($user) {
-                if ($user->profile_picture) {
+                            if ($user->profile_picture) {
+                // Check if it's already a full URL
+                if (filter_var($user->profile_picture, FILTER_VALIDATE_URL)) {
+                    $user->profile_picture_url = $user->profile_picture;
+                } else {
                     $user->profile_picture_url = asset('storage/' . $user->profile_picture);
                 }
+            }
                 return $user;
             });
 
@@ -96,7 +101,12 @@ class AdminController extends Controller
             }
 
             if ($user->profile_picture) {
-                $user->profile_picture_url = asset('storage/' . $user->profile_picture);
+                // Check if it's already a full URL
+                if (filter_var($user->profile_picture, FILTER_VALIDATE_URL)) {
+                    $user->profile_picture_url = $user->profile_picture;
+                } else {
+                    $user->profile_picture_url = asset('storage/' . $user->profile_picture);
+                }
             }
 
             return response()->json([
@@ -361,6 +371,54 @@ class AdminController extends Controller
                 'success' => false,
                 'message' => 'Failed to deactivate user',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Test role change functionality
+     */
+    public function testRoleChange($userId)
+    {
+        try {
+            $user = User::find($userId);
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'User not found'], 404);
+            }
+
+            // Create a test role change request
+            $roleRequest = RoleChangeRequest::create([
+                'user_id' => $userId,
+                'current_role' => $user->role,
+                'requested_role' => 'artist',
+                'reason' => 'Test role change',
+                'status' => 'pending'
+            ]);
+
+            // Approve the request
+            $roleRequest->approve(auth()->id(), 'Test approval');
+
+            // Refresh user data
+            $user->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test role change completed',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'old_role' => $roleRequest->current_role,
+                    'new_role' => $user->role,
+                    'request_status' => $roleRequest->status
+                ],
+                'role_request' => $roleRequest
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Test failed',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ], 500);
         }
     }

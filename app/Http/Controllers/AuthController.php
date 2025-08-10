@@ -58,7 +58,7 @@ class AuthController extends Controller
 
         if ($request->hasFile('profile_picture')) {
             $path = $request->file('profile_picture')->storeAs('images/profile_pictures/', $user->id . '_' . time() . '.jpg', 'public');
-            $user->profile_picture = Storage::disk('public')->url($path);
+            $user->profile_picture = $path; // Store relative path, not full URL
             $user->save();
         }
 
@@ -148,7 +148,12 @@ class AuthController extends Controller
             if ($request->hasFile('profile_picture')) {
                 // Delete old profile picture if exists
                 if ($user->profile_picture) {
-                    $oldPath = str_replace('/storage/', '', $user->profile_picture);
+                    // Handle both full URLs and relative paths
+                    $oldPath = $user->profile_picture;
+                    if (filter_var($oldPath, FILTER_VALIDATE_URL)) {
+                        // If it's a full URL, extract the relative path
+                        $oldPath = str_replace('/storage/', '', $oldPath);
+                    }
                     if (Storage::disk('public')->exists($oldPath)) {
                         Storage::disk('public')->delete($oldPath);
                     }
@@ -160,7 +165,7 @@ class AuthController extends Controller
                     $user->id . '_' . time() . '.jpg', 
                     'public'
                 );
-                $updateData['profile_picture'] = Storage::disk('public')->url($path);
+                $updateData['profile_picture'] = $path; // Store relative path, not full URL
             }
 
             $user->update($updateData);
@@ -270,7 +275,7 @@ class AuthController extends Controller
                     if ($imageContents) {
                         $relativePath = 'images/profile_pictures/' . $user->id . '_' . time() . '.jpg';
                         Storage::disk('public')->put($relativePath, $imageContents);
-                        $user->profile_picture = Storage::disk('public')->url($relativePath);
+                        $user->profile_picture = $relativePath; // Store relative path, not full URL
                         $user->save();
                     }
                 } catch (\Exception $e) {
