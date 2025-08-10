@@ -51,64 +51,68 @@ class RoleChangeRequest extends Model
 
         public function approve($adminId, $notes = null)
     {
-        try {
-            \Log::info('Starting role change approval', [
-                'request_id' => $this->id,
-                'user_id' => $this->user_id,
-                'requested_role' => $this->requested_role,
-                'admin_id' => $adminId
-            ]);
+        return \DB::transaction(function () use ($adminId, $notes) {
+            try {
+                \Log::info('Starting role change approval', [
+                    'request_id' => $this->id,
+                    'user_id' => $this->user_id,
+                    'requested_role' => $this->requested_role,
+                    'admin_id' => $adminId
+                ]);
 
-            // Update the role change request first
-            $this->update([
-                'status' => 'approved',
-                'reviewed_by' => $adminId,
-                'admin_notes' => $notes,
-                'reviewed_at' => now(),
-            ]);
+                // Update the role change request first
+                $this->update([
+                    'status' => 'approved',
+                    'reviewed_by' => $adminId,
+                    'admin_notes' => $notes,
+                    'reviewed_at' => now(),
+                ]);
 
-            \Log::info('Role change request updated to approved');
+                \Log::info('Role change request updated to approved');
 
-            // Update user role
-            if ($this->user) {
-                $oldRole = $this->user->role;
-                $updated = $this->user->update(['role' => $this->requested_role]);
-                
-                if (!$updated) {
-                    throw new \Exception('Failed to update user role');
+                // Update user role
+                if ($this->user) {
+                    $oldRole = $this->user->role;
+                    $updated = $this->user->update(['role' => $this->requested_role]);
+                    
+                    if (!$updated) {
+                        throw new \Exception('Failed to update user role');
+                    }
+                    
+                    \Log::info('User role updated successfully', [
+                        'user_id' => $this->user_id,
+                        'old_role' => $oldRole,
+                        'new_role' => $this->requested_role
+                    ]);
+                    
+                    // If approved to become artist, create artist record and assign music
+                    if ($this->requested_role === 'artist') {
+                        $this->createArtistRecord();
+                        $this->assignMusicToArtist();
+                    }
+                } else {
+                    throw new \Exception('User not found for role change request');
                 }
                 
-                \Log::info('User role updated successfully', [
-                    'user_id' => $this->user_id,
-                    'old_role' => $oldRole,
-                    'new_role' => $this->requested_role
+                \Log::info('Role change approval completed successfully', [
+                    'request_id' => $this->id,
+                    'user_id' => $this->user_id
                 ]);
                 
-                // If approved to become artist, create artist record and assign music
-                if ($this->requested_role === 'artist') {
-                    $this->createArtistRecord();
-                    $this->assignMusicToArtist();
-                }
-            } else {
-                throw new \Exception('User not found for role change request');
+                return true;
+                
+            } catch (\Exception $e) {
+                \Log::error('Role change approval failed', [
+                    'request_id' => $this->id,
+                    'user_id' => $this->user_id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                
+                // Re-throw the exception so the transaction is rolled back
+                throw $e;
             }
-            
-            \Log::info('Role change approval completed successfully', [
-                'request_id' => $this->id,
-                'user_id' => $this->user_id
-            ]);
-            
-        } catch (\Exception $e) {
-            \Log::error('Role change approval failed', [
-                'request_id' => $this->id,
-                'user_id' => $this->user_id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            // Re-throw the exception so the controller can handle it
-            throw $e;
-        }
+        });
     }
 
     public function reject($adminId, $notes = null)
@@ -157,5 +161,89 @@ class RoleChangeRequest extends Model
                 'user_id' => $this->user_id
             ]);
         }
+    }
+
+    public static function validateUserArtistConsistency()
+    {
+        $inconsistencies = [];
+        
+        // Find users with 'artist' role but no artist record
+        $usersWithArtistRole = \App\Models\User::where('role', 'artist')->get();
+        foreach ($usersWithArtistRole as $user) {
+            $artistRecord = \App\Models\Artist::where('user_id', $user->id)->first();
+            if (!$artistRecord) {
+                $inconsistencies[] = [
+                    'type' => 'user_artist_role_no_record',
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+                    'message' => 'User has artist role but no artist record'
+                ];
+            }
+        }
+        
+        // Find artist records with users that don't have 'artist' role
+        $artistRecords = \App\Models\Artist::all();
+        foreach ($artistRecords as $artist) {
+            $user = \App\Models\User::find($artist->user_id);
+            if (!$user) {
+                $inconsistencies[] = [
+                    'type' => 'orphaned_artist_record',
+                    'artist_id' => $artist->id,
+                    'user_id' => $artist->user_id,
+                    'message' => 'Artist record exists but user not found'
+                ];
+            } elseif ($user->role !== 'artist') {
+                $inconsistencies[] = [
+                    'type' => 'artist_record_user_not_artist',
+                    'artist_id' => $artist->id,
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+                    'user_role' => $user->role,
+                    'message' => 'Artist record exists but user role is not artist'
+                ];
+            }
+        }
+        
+        return $inconsistencies;
+    }
+
+    public static function fixUserArtistInconsistencies()
+    {
+        $fixed = [];
+        
+        // Fix users with artist role but no artist record
+        $usersWithArtistRole = \App\Models\User::where('role', 'artist')->get();
+        foreach ($usersWithArtistRole as $user) {
+            $artistRecord = \App\Models\Artist::where('user_id', $user->id)->first();
+            if (!$artistRecord) {
+                $artist = \App\Models\Artist::create([
+                    'user_id' => $user->id,
+                    'artist_name' => $user->name,
+                    'artist_image' => $user->profile_picture,
+                ]);
+                $fixed[] = [
+                    'type' => 'created_artist_record',
+                    'user_id' => $user->id,
+                    'artist_id' => $artist->id
+                ];
+            }
+        }
+        
+        // Fix artist records with users that don't have artist role
+        $artistRecords = \App\Models\Artist::all();
+        foreach ($artistRecords as $artist) {
+            $user = \App\Models\User::find($artist->user_id);
+            if ($user && $user->role !== 'artist') {
+                $user->update(['role' => 'artist']);
+                $fixed[] = [
+                    'type' => 'updated_user_role',
+                    'user_id' => $user->id,
+                    'old_role' => $user->getOriginal('role'),
+                    'new_role' => 'artist'
+                ];
+            }
+        }
+        
+        return $fixed;
     }
 }

@@ -25,7 +25,7 @@ if ($type === 'compressed') {
     $basePath .= 'songs_cover/';
 } elseif ($type === 'artist' || $type === 'artist_image') {
     $basePath .= 'artist_image/';
-} else if ($type == "albums_cover") {
+} elseif ($type === 'albums_cover' || $type === 'album') {
     $basePath .= 'albums_cover/';
 } else {
     $basePath .= 'audios/';
@@ -35,7 +35,7 @@ $filePath = $basePath . $filename;
 
 if (!file_exists($filePath)) {
     http_response_code(404);
-    exit('File not found');
+    exit('File not found: ' . $filePath);
 }
 
 $mimeType = mime_content_type($filePath);

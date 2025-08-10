@@ -318,6 +318,17 @@ Route::get('/artists/{artistId}/songs', [\App\Http\Controllers\ArtistController:
 Route::get('/albums', [\App\Http\Controllers\AlbumController::class, 'index']);
 Route::get('/artists/{artistId}/albums', [\App\Http\Controllers\AlbumController::class, 'getAlbumsByArtist']);
 
+// Artist album management routes
+Route::middleware(['auth:sanctum', 'artist'])->group(function () {
+    Route::get('/artist/albums', [\App\Http\Controllers\AlbumController::class, 'getMyAlbums']);
+    Route::post('/artist/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
+    Route::get('/artist/albums/{id}', [\App\Http\Controllers\AlbumController::class, 'show']);
+    Route::put('/artist/albums/{id}', [\App\Http\Controllers\AlbumController::class, 'update']);
+    Route::delete('/artist/albums/{id}', [\App\Http\Controllers\AlbumController::class, 'destroy']);
+    Route::post('/artist/albums/{id}/add-songs', [\App\Http\Controllers\AlbumController::class, 'addSongs']);
+    Route::post('/artist/albums/{id}/remove-songs', [\App\Http\Controllers\AlbumController::class, 'removeSongs']);
+});
+
 // Test database update endpoint
 Route::post('/test-db-update', function (Request $request) {
     try {

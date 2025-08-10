@@ -42,8 +42,7 @@ class RecommendationEngine
                 try {
                     $tf = $this->normalizeValue($value);
                     $songs_with_feature = $this->countSongsWithFeature($feature, $value);
-                    
-                    // Avoid division by zero
+
                     if ($songs_with_feature <= 0) {
                         $idf = 0;
                     } else {
@@ -52,13 +51,11 @@ class RecommendationEngine
 
                     $tfidf[$feature] = $tf * $idf;
                 } catch (\Exception $e) {
-                    // Skip features that cause errors
                     $tfidf[$feature] = 0;
                 }
             }
             return $tfidf;
         } catch (\Exception $e) {
-            // Return empty vector if TF-IDF calculation fails
             return array_fill_keys(array_keys($features), 0);
         }
     }
@@ -67,24 +64,22 @@ class RecommendationEngine
     {
         $user_vector = [];
 
-        // Get recently played songs
         $session_songs = RecentlyPlayed::where('user_id', $user_id)
             ->with(['song.artist', 'song.ratings'])
             ->orderBy('created_at', 'desc')
             ->limit(20)
             ->get();
 
-        // Get user ratings
         $user_ratings = Rating::where('user_id', $user_id)
             ->where('rateable_type', 'App\Models\Music')
             ->with(['rateable.artist', 'rateable.ratings'])
             ->get();
 
-        // Process recently played songs
         foreach ($session_songs as $sessionSong) {
             try {
                 $song = $sessionSong->song;
-                if (!$song) continue;
+                if (!$song)
+                    continue;
 
                 $song_vector = $this->createSongVector($song);
                 $weight = $this->calculateTimeWeight($sessionSong->created_at);
@@ -97,14 +92,13 @@ class RecommendationEngine
             }
         }
 
-        // Process user ratings (higher weight for ratings)
         foreach ($user_ratings as $rating) {
             try {
                 $song = $rating->rateable;
-                if (!$song) continue;
+                if (!$song)
+                    continue;
 
                 $song_vector = $this->createSongVector($song);
-                // Higher weight for ratings (2x more important than recently played)
                 $weight = $this->calculateRatingWeight($rating->rating);
 
                 foreach ($song_vector as $feature => $value) {
@@ -143,7 +137,6 @@ class RecommendationEngine
 
     public function getRecommendations($user_id = null, $limit = 10)
     {
-        // If no user_id provided, return global trending songs
         if (!$user_id) {
             return $this->getGlobalTrendingSongs($limit);
         }
@@ -151,14 +144,12 @@ class RecommendationEngine
         try {
             $user_vector = $this->getUserPreferenceVector($user_id);
 
-            // If user vector is empty, fallback to global trending songs
             if (empty($user_vector)) {
                 return $this->getGlobalTrendingSongs($limit);
             }
 
-            // Get songs the user hasn't rated or recently played
             $excluded_song_ids = $this->getExcludedSongIds($user_id);
-            
+
             $all_songs = Music::with(['artist', 'ratings'])
                 ->whereNotIn('id', $excluded_song_ids)
                 ->get();
@@ -197,7 +188,6 @@ class RecommendationEngine
     public function getTopArtists($user_id, $limit = 5)
     {
         try {
-            // Get user's favorite artists based on ratings and recently played
             $user_ratings = Rating::where('user_id', $user_id)
                 ->where('rateable_type', 'App\Models\Music')
                 ->with(['rateable.artist'])
@@ -209,7 +199,6 @@ class RecommendationEngine
 
             $artist_scores = [];
 
-            // Process ratings
             foreach ($user_ratings as $rating) {
                 if ($rating->rateable && $rating->rateable->artist) {
                     $artist_id = $rating->rateable->artist->id;
@@ -217,7 +206,6 @@ class RecommendationEngine
                 }
             }
 
-            // Process recently played
             foreach ($recently_played as $played) {
                 if ($played->song && $played->song->artist) {
                     $artist_id = $played->song->artist->id;
@@ -225,7 +213,6 @@ class RecommendationEngine
                 }
             }
 
-            // Get top artists
             arsort($artist_scores);
             $top_artist_ids = array_slice(array_keys($artist_scores), 0, $limit);
 
@@ -244,7 +231,6 @@ class RecommendationEngine
             })->toArray();
 
         } catch (\Exception $e) {
-            // Fallback to popular artists
             return $this->getGlobalTopArtists($limit);
         }
     }
@@ -252,17 +238,15 @@ class RecommendationEngine
     public function getGlobalTopArtists($limit = 5)
     {
         try {
-            // Get artists based on total views, ratings, and song count
             $artists = Artist::with(['music.ratings'])
                 ->get()
                 ->map(function ($artist) {
                     $total_views = $artist->music->sum('views');
                     $avg_rating = $artist->music->flatMap->ratings->avg('rating') ?? 0;
                     $song_count = $artist->music->count();
-                    
-                    // Calculate popularity score
+
                     $score = ($total_views * 0.4) + ($avg_rating * 20) + ($song_count * 10);
-                    
+
                     return [
                         'artist' => $artist,
                         'score' => $score,
@@ -278,7 +262,6 @@ class RecommendationEngine
 
             return $artists;
         } catch (\Exception $e) {
-            // Fallback to artists with most songs
             return Artist::with(['music'])
                 ->get()
                 ->sortByDesc(function ($artist) {
@@ -298,17 +281,15 @@ class RecommendationEngine
     public function getGlobalTrendingSongs($limit = 10)
     {
         try {
-            // Get trending songs based on views, ratings, and recent activity
             $songs = Music::with(['artist', 'ratings'])
                 ->get()
                 ->map(function ($song) {
                     $views = $song->views ?? 0;
                     $avg_rating = $song->ratings->avg('rating') ?? 0;
                     $rating_count = $song->ratings->count();
-                    
-                    // Calculate trending score
+
                     $trending_score = ($views * 0.3) + ($avg_rating * 15) + ($rating_count * 5);
-                    
+
                     return [
                         'song' => $song,
                         'trending_score' => $trending_score,
@@ -324,7 +305,6 @@ class RecommendationEngine
 
             return $songs;
         } catch (\Exception $e) {
-            // Fallback to most viewed songs
             return Music::with(['artist', 'ratings'])
                 ->orderBy('views', 'desc')
                 ->limit($limit)
@@ -341,7 +321,6 @@ class RecommendationEngine
 
     private function getExcludedSongIds($user_id)
     {
-        // Get songs user has rated or recently played
         $rated_songs = Rating::where('user_id', $user_id)
             ->where('rateable_type', 'App\Models\Music')
             ->pluck('rateable_id');
@@ -354,22 +333,19 @@ class RecommendationEngine
 
     private function calculateRatingWeight($rating)
     {
-        // Higher ratings get higher weight
-        return $rating / 5.0 * 2.0; // Scale 0-5 to 0-2
+        return $rating / 5.0 * 2.0;
     }
 
     private function normalizeValue($value)
     {
-        // Convert to numeric value, handle strings and null values
         if (is_string($value)) {
-            // For string values like genre names, use string length or hash
             $value = strlen($value);
         } elseif (is_null($value)) {
             $value = 0;
         } else {
             $value = (float) $value;
         }
-        
+
         return min(1, max(0, $value / 100));
     }
 
@@ -397,28 +373,29 @@ class RecommendationEngine
     private function extractEra($date)
     {
         $year = $date->year;
-        if ($year >= 2020) return '2020s';
-        if ($year >= 2010) return '2010s';
-        if ($year >= 2000) return '2000s';
-        if ($year >= 1990) return '1990s';
-        if ($year >= 1980) return '1980s';
+        if ($year >= 2020)
+            return '2020s';
+        if ($year >= 2010)
+            return '2010s';
+        if ($year >= 2000)
+            return '2000s';
+        if ($year >= 1990)
+            return '1990s';
+        if ($year >= 1980)
+            return '1980s';
         return 'older';
     }
 
     private function countSongsWithFeature($feature, $value)
     {
-        // Handle different feature types
         if ($feature === 'genre' && is_string($value)) {
-            // For genre, count songs with similar genre
             $cache_key = "songs_with_genre_" . md5($value);
             return Cache::remember($cache_key, 3600, function () use ($value) {
                 return Music::where('genre', $value)->count();
             });
         } elseif ($feature === 'era' && is_string($value)) {
-            // For era, we'll use a simple count since era is calculated
             return 1;
         } else {
-            // For numeric features
             $cache_key = "songs_with_{$feature}_{$value}";
             return Cache::remember($cache_key, 3600, function () use ($feature, $value) {
                 return Music::where($feature, $value)->count();
