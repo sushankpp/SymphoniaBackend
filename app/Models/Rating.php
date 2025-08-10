@@ -8,7 +8,8 @@ class Rating extends Model
 {
     protected $fillable = ['user_id', 'rateable_id', 'rateable_type', 'rating'];
 
-    public function rateable(){
+    public function rateable()
+    {
         return $this->morphTo();  // defines the polymorphic relationship
     }
 

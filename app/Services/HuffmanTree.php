@@ -12,7 +12,6 @@ class HuffmanTree
             throw new \Exception("Frequency map is empty");
         }
 
-        // Limit to top 100 most frequent symbols to prevent memory issues
         arsort($frequencyMap);
         $frequencyMap = array_slice($frequencyMap, 0, 100, true);
 
@@ -21,7 +20,6 @@ class HuffmanTree
             $nodes[] = new HuffmanNode($symbol, $frequency);
         }
 
-        // Handle single symbol case
         if (count($nodes) === 1) {
             $this->codes[$nodes[0]->symbol] = '0';
             return $nodes[0];
@@ -34,7 +32,7 @@ class HuffmanTree
 
             $left = array_shift($nodes);
             $right = array_shift($nodes);
-            
+
 
             $parent = new HuffmanNode(null, $left->frequency + $right->frequency);
             $parent->left = $left;

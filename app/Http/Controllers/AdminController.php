@@ -23,33 +23,29 @@ class AdminController extends Controller
 
             $query = User::query();
 
-            // Filter by role
             if ($role && in_array($role, ['user', 'artist', 'admin'])) {
                 $query->where('role', $role);
             }
 
-            // Search by name or email
             if ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                        ->orWhere('email', 'like', "%{$search}%");
                 });
             }
 
             $users = $query->withCount(['recentlyPlayed'])
-                          ->orderBy('created_at', 'desc')
-                          ->paginate($perPage);
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
 
-            // Add profile picture URLs
             $users->getCollection()->transform(function ($user) {
-                            if ($user->profile_picture) {
-                // Check if it's already a full URL
-                if (filter_var($user->profile_picture, FILTER_VALIDATE_URL)) {
-                    $user->profile_picture_url = $user->profile_picture;
-                } else {
-                    $user->profile_picture_url = asset('storage/' . $user->profile_picture);
+                if ($user->profile_picture) {
+                    if (filter_var($user->profile_picture, FILTER_VALIDATE_URL)) {
+                        $user->profile_picture_url = $user->profile_picture;
+                    } else {
+                        $user->profile_picture_url = asset('storage/' . $user->profile_picture);
+                    }
                 }
-            }
                 return $user;
             });
 
@@ -73,8 +69,8 @@ class AdminController extends Controller
     {
         try {
             $user = User::with(['recentlyPlayed.song', 'recentlyPlayed.song.artist'])
-                       ->withCount(['recentlyPlayed'])
-                       ->find($userId);
+                ->withCount(['recentlyPlayed'])
+                ->find($userId);
 
             if (!$user) {
                 return response()->json([
@@ -83,25 +79,22 @@ class AdminController extends Controller
                 ], 404);
             }
 
-            // Get user's ratings
             $ratings = Rating::where('user_id', $userId)
-                           ->where('rateable_type', 'App\Models\Music')
-                           ->with(['rateable.artist'])
-                           ->orderBy('created_at', 'desc')
-                           ->limit(10)
-                           ->get();
+                ->where('rateable_type', 'App\Models\Music')
+                ->with(['rateable.artist'])
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
 
-            // Get user's uploaded music if they're an artist
             $uploadedMusic = [];
             if ($user->isArtist()) {
                 $uploadedMusic = Music::where('uploaded_by', $userId)
-                                    ->with(['artist', 'ratings'])
-                                    ->withCount(['ratings'])
-                                    ->get();
+                    ->with(['artist', 'ratings'])
+                    ->withCount(['ratings'])
+                    ->get();
             }
 
             if ($user->profile_picture) {
-                // Check if it's already a full URL
                 if (filter_var($user->profile_picture, FILTER_VALIDATE_URL)) {
                     $user->profile_picture_url = $user->profile_picture;
                 } else {
@@ -158,7 +151,13 @@ class AdminController extends Controller
             }
 
             $user->update($request->only([
-                'name', 'email', 'role', 'status', 'bio', 'phone', 'address'
+                'name',
+                'email',
+                'role',
+                'status',
+                'bio',
+                'phone',
+                'address'
             ]));
 
             return response()->json([
@@ -185,7 +184,7 @@ class AdminController extends Controller
             $perPage = $request->get('per_page', 15);
 
             $query = RoleChangeRequest::with(['user', 'reviewer'])
-                                    ->orderBy('created_at', 'desc');
+                ->orderBy('created_at', 'desc');
 
             if ($status && in_array($status, ['pending', 'approved', 'rejected'])) {
                 $query->where('status', $status);
@@ -310,10 +309,10 @@ class AdminController extends Controller
                 'total_ratings' => Rating::count(),
                 'recent_users' => User::orderBy('created_at', 'desc')->limit(5)->get(),
                 'recent_role_requests' => RoleChangeRequest::with(['user'])
-                                                           ->where('status', 'pending')
-                                                           ->orderBy('created_at', 'desc')
-                                                           ->limit(5)
-                                                           ->get(),
+                    ->where('status', 'pending')
+                    ->orderBy('created_at', 'desc')
+                    ->limit(5)
+                    ->get(),
             ];
 
             return response()->json([
@@ -344,7 +343,6 @@ class AdminController extends Controller
                 ], 404);
             }
 
-            // Prevent deleting other admins
             if ($user->isAdmin() && $user->id !== auth()->id()) {
                 return response()->json([
                     'success' => false,
@@ -352,7 +350,6 @@ class AdminController extends Controller
                 ], 403);
             }
 
-            // Prevent self-deletion
             if ($user->id === auth()->id()) {
                 return response()->json([
                     'success' => false,
@@ -386,7 +383,6 @@ class AdminController extends Controller
                 return response()->json(['success' => false, 'message' => 'User not found'], 404);
             }
 
-            // Create a test role change request
             $roleRequest = RoleChangeRequest::create([
                 'user_id' => $userId,
                 'current_role' => $user->role,
@@ -395,10 +391,8 @@ class AdminController extends Controller
                 'status' => 'pending'
             ]);
 
-            // Approve the request
             $roleRequest->approve(auth()->id(), 'Test approval');
 
-            // Refresh user data
             $user->refresh();
 
             return response()->json([
@@ -430,7 +424,7 @@ class AdminController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'admin') {
                 return response()->json([
                     'error' => 'Only admins can view music upload requests'
@@ -439,12 +433,10 @@ class AdminController extends Controller
 
             $query = \App\Models\MusicUploadRequest::with(['user', 'artist', 'songArtist', 'album']);
 
-            // Filter by status
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
 
-            // Filter by artist
             if ($request->has('artist_id')) {
                 $query->where('artist_id', $request->artist_id);
             }

@@ -16,10 +16,9 @@ class RoleChangeRequestController extends Controller
         try {
             $user = auth()->user();
 
-            // Check if user already has a pending request
             $existingRequest = RoleChangeRequest::where('user_id', $user->id)
-                                              ->where('status', 'pending')
-                                              ->first();
+                ->where('status', 'pending')
+                ->first();
 
             if ($existingRequest) {
                 return response()->json([
@@ -41,7 +40,6 @@ class RoleChangeRequestController extends Controller
                 ], 422);
             }
 
-            // Users can only request to become artists
             if ($request->requested_role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -49,7 +47,6 @@ class RoleChangeRequestController extends Controller
                 ], 400);
             }
 
-            // Check if user is already an artist or admin
             if ($user->role !== 'user') {
                 return response()->json([
                     'success' => false,
@@ -87,9 +84,9 @@ class RoleChangeRequestController extends Controller
             $user = auth()->user();
 
             $requests = RoleChangeRequest::where('user_id', $user->id)
-                                       ->with(['reviewer'])
-                                       ->orderBy('created_at', 'desc')
-                                       ->get();
+                ->with(['reviewer'])
+                ->orderBy('created_at', 'desc')
+                ->get();
 
             return response()->json([
                 'success' => true,
@@ -113,9 +110,9 @@ class RoleChangeRequestController extends Controller
             $user = auth()->user();
 
             $request = RoleChangeRequest::where('id', $id)
-                                      ->where('user_id', $user->id)
-                                      ->with(['reviewer'])
-                                      ->first();
+                ->where('user_id', $user->id)
+                ->with(['reviewer'])
+                ->first();
 
             if (!$request) {
                 return response()->json([
@@ -146,9 +143,9 @@ class RoleChangeRequestController extends Controller
             $user = auth()->user();
 
             $request = RoleChangeRequest::where('id', $id)
-                                      ->where('user_id', $user->id)
-                                      ->where('status', 'pending')
-                                      ->first();
+                ->where('user_id', $user->id)
+                ->where('status', 'pending')
+                ->first();
 
             if (!$request) {
                 return response()->json([

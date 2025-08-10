@@ -31,7 +31,6 @@ class MusicUploadRequest extends Model
         'release_date' => 'date',
     ];
 
-    // Relationships
     public function artist()
     {
         return $this->belongsTo(Artist::class, 'artist_id');
@@ -59,7 +58,6 @@ class MusicUploadRequest extends Model
     {
         try {
             DB::transaction(function () use ($adminNotes) {
-                // Validate that temporary files exist
                 if (!Storage::disk('public')->exists($this->file_path)) {
                     throw new \Exception("Audio file not found: {$this->file_path}");
                 }
@@ -67,16 +65,13 @@ class MusicUploadRequest extends Model
                     throw new \Exception("Cover image not found: {$this->song_cover_path}");
                 }
 
-                // Move files from temporary location to final location
                 $finalAudioPath = $this->moveFileToFinalLocation($this->file_path, 'audios');
                 $finalCoverPath = $this->moveFileToFinalLocation($this->song_cover_path, 'albums_cover');
 
-                // Validate that files were moved successfully
                 if (!$finalAudioPath || !$finalCoverPath) {
                     throw new \Exception("Failed to move files to final location");
                 }
 
-                // Create the music record with final file paths
                 $musicData = [
                     'title' => $this->song_title,
                     'file_path' => $finalAudioPath,
@@ -92,13 +87,11 @@ class MusicUploadRequest extends Model
 
                 $music = Music::create($musicData);
 
-                // Create uploaded music record
                 UploadedMusic::create([
                     'music_id' => $music->id,
                     'uploaded_by' => $this->user_id,
                 ]);
 
-                // Update request status
                 $this->update([
                     'status' => 'approved',
                     'admin_notes' => $adminNotes
@@ -121,7 +114,6 @@ class MusicUploadRequest extends Model
     {
         try {
             DB::transaction(function () use ($adminNotes) {
-                // Delete temporary files
                 if (Storage::disk('public')->exists($this->file_path)) {
                     Storage::disk('public')->delete($this->file_path);
                 }
@@ -129,7 +121,6 @@ class MusicUploadRequest extends Model
                     Storage::disk('public')->delete($this->song_cover_path);
                 }
 
-                // Update request status
                 $this->update([
                     'status' => 'rejected',
                     'admin_notes' => $adminNotes
@@ -152,7 +143,6 @@ class MusicUploadRequest extends Model
     {
         try {
             DB::transaction(function () {
-                // Delete temporary files
                 if (Storage::disk('public')->exists($this->file_path)) {
                     Storage::disk('public')->delete($this->file_path);
                 }
@@ -160,7 +150,6 @@ class MusicUploadRequest extends Model
                     Storage::disk('public')->delete($this->song_cover_path);
                 }
 
-                // Delete the request
                 $this->delete();
 
                 \Log::info("Music upload request {$this->id} cancelled by artist");
@@ -182,13 +171,10 @@ class MusicUploadRequest extends Model
             throw new \Exception("Temporary file not found: {$tempPath}");
         }
 
-        // Get the filename from the temp path
         $filename = basename($tempPath);
-        
-        // Create the final path
+
         $finalPath = $finalDirectory . '/' . $filename;
-        
-        // Move the file
+
         if (Storage::disk('public')->move($tempPath, $finalPath)) {
             return $finalPath;
         } else {

@@ -20,7 +20,6 @@ class AlbumController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->paginate(15);
 
-            // Add cover image URLs
             $albums->getCollection()->transform(function ($album) {
                 if ($album->cover_image_path) {
                     $album->cover_image_url = asset('storage/' . $album->cover_image_path);
@@ -52,7 +51,6 @@ class AlbumController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Add cover image URLs
             $albums->transform(function ($album) {
                 if ($album->cover_image_path) {
                     $album->cover_image_url = asset('storage/' . $album->cover_image_path);
@@ -80,7 +78,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -101,13 +99,11 @@ class AlbumController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Add cover image URLs and song details
             $albums->transform(function ($album) {
                 if ($album->cover_image_path) {
                     $album->cover_image_url = asset('storage/' . $album->cover_image_path);
                 }
-                
-                // Add song URLs
+
                 $album->songs->transform(function ($song) {
                     if ($song->file_path) {
                         $song->file_url = asset('storage/' . $song->file_path);
@@ -117,7 +113,7 @@ class AlbumController extends Controller
                     }
                     return $song;
                 });
-                
+
                 return $album;
             });
 
@@ -141,7 +137,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -149,7 +145,6 @@ class AlbumController extends Controller
                 ], 403);
             }
 
-            // Log the incoming request data for debugging
             \Log::info('Album creation request', [
                 'user_id' => $user->id,
                 'user_role' => $user->role,
@@ -161,19 +156,15 @@ class AlbumController extends Controller
                 'headers' => $request->headers->all()
             ]);
 
-            // Handle song_ids that might come as string or array
             $songIds = $request->input('song_ids');
             if (is_string($songIds)) {
-                // Try to decode JSON if it's a JSON string
                 if (str_starts_with($songIds, '[') && str_ends_with($songIds, ']')) {
                     $songIds = json_decode($songIds, true);
                 } else {
-                    // Single ID as string
                     $songIds = [$songIds];
                 }
             }
-            
-            // Replace the song_ids in request for validation
+
             $request->merge(['song_ids' => $songIds]);
 
             $validated = $request->validate([
@@ -192,7 +183,6 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Store cover image if provided
             $coverPath = null;
             if ($request->hasFile('cover_image')) {
                 $coverPath = $request->file('cover_image')->store('albums_cover', 'public');
@@ -206,22 +196,19 @@ class AlbumController extends Controller
                 'release_date' => $validated['release_date'],
             ]);
 
-            // Add songs to album if provided (AUTOMATIC)
             $addedSongs = [];
             if ($request->has('song_ids') && is_array($request->song_ids)) {
                 $songIds = $request->song_ids;
-                
-                // Automatically verify songs belong to this artist
+
                 $artistSongs = Music::whereIn('id', $songIds)
                     ->where('uploaded_by', $user->id)
                     ->pluck('id')
                     ->toArray();
-                
+
                 if (!empty($artistSongs)) {
-                    // Automatically update songs with album_id
                     Music::whereIn('id', $artistSongs)->update(['album_id' => $album->id]);
                     $addedSongs = $artistSongs;
-                    
+
                     \Log::info('Songs automatically added to album', [
                         'album_id' => $album->id,
                         'album_title' => $album->title,
@@ -236,7 +223,6 @@ class AlbumController extends Controller
                 $album->cover_image_url = asset('storage/' . $coverPath);
             }
 
-            // Load songs for response
             $album->load('songs');
 
             return response()->json([
@@ -252,7 +238,7 @@ class AlbumController extends Controller
                 'errors' => $e->errors(),
                 'request_data' => $request->all()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -264,7 +250,7 @@ class AlbumController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create album',
@@ -280,7 +266,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -312,7 +298,6 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Update songs to belong to this album
             $updatedCount = Music::whereIn('id', $validated['song_ids'])
                 ->where('uploaded_by', $user->id)
                 ->update(['album_id' => $albumId]);
@@ -345,7 +330,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -377,26 +362,23 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Remove songs from album (AUTOMATIC)
             $updatedCount = Music::whereIn('id', $validated['song_ids'])
                 ->where('uploaded_by', $user->id)
                 ->where('album_id', $albumId)
                 ->update(['album_id' => null]);
 
-            // Automatically check if album is now empty
             $remainingSongs = Music::where('album_id', $albumId)->count();
-            
+
             if ($remainingSongs === 0) {
-                // Automatically delete empty album
                 $album->delete();
-                
+
                 \Log::info('Empty album automatically deleted', [
                     'album_id' => $albumId,
                     'album_title' => $album->title,
                     'artist_id' => $artist->id,
                     'user_id' => $user->id
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => "Removed {$updatedCount} songs from album. Album was empty and has been automatically deleted.",
@@ -433,7 +415,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -466,13 +448,11 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Handle cover image update
             if ($request->hasFile('cover_image')) {
-                // Delete old cover image if exists
                 if ($album->cover_image_path && Storage::disk('public')->exists($album->cover_image_path)) {
                     Storage::disk('public')->delete($album->cover_image_path);
                 }
-                
+
                 $coverPath = $request->file('cover_image')->store('albums_cover', 'public');
                 $validated['cover_image_path'] = $coverPath;
             }
@@ -511,7 +491,7 @@ class AlbumController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'success' => false,
@@ -538,10 +518,8 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Automatically remove album_id from all songs in this album
             $songsUpdated = Music::where('album_id', $albumId)->update(['album_id' => null]);
 
-            // Automatically delete cover image if exists
             if ($album->cover_image_path && Storage::disk('public')->exists($album->cover_image_path)) {
                 Storage::disk('public')->delete($album->cover_image_path);
             }
@@ -586,7 +564,6 @@ class AlbumController extends Controller
                 ], 404);
             }
 
-            // Add URLs
             if ($album->cover_image_path) {
                 $album->cover_image_url = asset('storage/' . $album->cover_image_path);
             }

@@ -18,12 +18,10 @@ class ArtistDashboardController extends Controller
     {
         try {
             $user = auth()->user();
-            
-            // Get or create artist record
+
             $artist = $user->artist;
-            
+
             if (!$artist) {
-                // Create artist record if it doesn't exist (for users who became artists)
                 $artist = \App\Models\Artist::create([
                     'user_id' => $user->id,
                     'artist_name' => $user->name,
@@ -31,30 +29,28 @@ class ArtistDashboardController extends Controller
                 ]);
             }
 
-            // Get artist statistics
             $musicCount = \App\Models\Music::where('uploaded_by', $user->id)->count();
             $totalViews = \App\Models\Music::where('uploaded_by', $user->id)->sum('views') ?? 0;
-            
-            // Get song ratings
+
             $songRatings = \App\Models\Music::where('uploaded_by', $user->id)->get();
-            $songRatingsCount = $songRatings->sum(function($music) {
+            $songRatingsCount = $songRatings->sum(function ($music) {
                 return $music->getAllRatingsCount();
             });
-            $songAvgRating = $songRatings->avg(function($music) {
+            $songAvgRating = $songRatings->avg(function ($music) {
                 return $music->getAllRatingsAvg();
             });
-            
-            // Get artist ratings
+
+
             $artistRatingsCount = \App\Models\Rating::where('rateable_id', $artist->id)
-                ->where(function($query) {
+                ->where(function ($query) {
                     $query->where('rateable_type', 'App\Models\Artist')
-                          ->orWhere('rateable_type', 'artist');
+                        ->orWhere('rateable_type', 'artist');
                 })
                 ->count();
             $artistAvgRating = \App\Models\Rating::where('rateable_id', $artist->id)
-                ->where(function($query) {
+                ->where(function ($query) {
                     $query->where('rateable_type', 'App\Models\Artist')
-                          ->orWhere('rateable_type', 'artist');
+                        ->orWhere('rateable_type', 'artist');
                 })
                 ->avg('rating') ?? 0;
 
@@ -113,17 +109,14 @@ class ArtistDashboardController extends Controller
                 'artist_image' => 'sometimes|image|mimes:jpeg,png,jpg,gif|max:2048',
             ]);
 
-            // Update artist record
             if ($request->has('artist_name')) {
                 $artist->update(['artist_name' => $request->artist_name]);
             }
 
-            // Update user bio
             if ($request->has('bio')) {
                 $user->update(['bio' => $request->bio]);
             }
 
-            // Handle artist image upload
             if ($request->hasFile('artist_image')) {
                 $image = $request->file('artist_image');
                 $imageName = 'artist_' . $user->id . '_' . time() . '.' . $image->getClientOriginalExtension();
@@ -153,27 +146,23 @@ class ArtistDashboardController extends Controller
         try {
             $artistId = auth()->id();
             $user = auth()->user();
-            
-            // Automatically fix song ownership if needed
             $this->fixSongOwnership();
 
-            // Get artist's uploaded music
             $uploadedMusic = Music::where('uploaded_by', $artistId)
-                                ->with(['artist', 'ratings'])
-                                ->get();
+                ->with(['artist', 'ratings'])
+                ->get();
 
-            // Add individual song ratings to each song
-            $uploadedMusic->each(function($music) {
+            $uploadedMusic->each(function ($music) {
                 $music->ratings_count = $music->getAllRatingsCount();
                 $music->avg_rating = $music->getAllRatingsAvg();
                 $music->rating_details = [
                     'count' => $music->getAllRatingsCount(),
                     'average' => round($music->getAllRatingsAvg(), 2)
                 ];
-                
-                // Load actual rating data
+
+
                 $ratings = $music->getAllRatings()->with('user')->get();
-                $music->ratings = $ratings->map(function($rating) {
+                $music->ratings = $ratings->map(function ($rating) {
                     return [
                         'id' => $rating->id,
                         'rating' => $rating->rating,
@@ -186,78 +175,68 @@ class ArtistDashboardController extends Controller
                 });
             });
 
-            // Calculate stats
+
             $totalTracks = $uploadedMusic->count();
             $totalViews = $uploadedMusic->sum('views');
-            
-            // Count song ratings using custom method
+
             $songRatings = $uploadedMusic->sum('ratings_count');
-            
-            // Count artist ratings (for the current artist)
+
             $artist = $user->artist;
             $artistRatings = 0;
             if ($artist) {
                 $artistRatings = Rating::where('rateable_id', $artist->id)
-                    ->where(function($query) {
+                    ->where(function ($query) {
                         $query->where('rateable_type', 'App\Models\Artist')
-                              ->orWhere('rateable_type', 'artist');
+                            ->orWhere('rateable_type', 'artist');
                     })
                     ->count();
             }
-            
-            // Keep song and artist ratings separate
+
             $totalSongRatings = $songRatings;
             $totalArtistRatings = $artistRatings;
-            
-            // Calculate separate averages
             $songAvgRating = $uploadedMusic->avg('avg_rating');
-            
+
             $artistAvgRating = 0;
             if ($artist) {
                 $artistAvgRating = Rating::where('rateable_id', $artist->id)
-                    ->where(function($query) {
+                    ->where(function ($query) {
                         $query->where('rateable_type', 'App\Models\Artist')
-                              ->orWhere('rateable_type', 'artist');
+                            ->orWhere('rateable_type', 'artist');
                     })
                     ->avg('rating') ?? 0;
             }
 
-            // Get recent activity (plays and ratings)
             $recentPlays = RecentlyPlayed::whereIn('song_id', $uploadedMusic->pluck('id'))
-                                       ->with(['user', 'song'])
-                                       ->orderBy('created_at', 'desc')
-                                       ->limit(10)
-                                       ->get();
-            
-            // Get recent ratings for the artist's songs
+                ->with(['user', 'song'])
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+
             $recentRatings = Rating::whereIn('rateable_id', $uploadedMusic->pluck('id'))
-                                  ->where(function($query) {
-                                      $query->where('rateable_type', 'App\Models\Music')
-                                            ->orWhere('rateable_type', 'song');
-                                  })
-                                  ->with(['user'])
-                                  ->orderBy('created_at', 'desc')
-                                  ->limit(10)
-                                  ->get();
-            
-            // Get recent artist ratings
+                ->where(function ($query) {
+                    $query->where('rateable_type', 'App\Models\Music')
+                        ->orWhere('rateable_type', 'song');
+                })
+                ->with(['user'])
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+
             $recentArtistRatings = collect();
             if ($artist) {
                 $recentArtistRatings = Rating::where('rateable_id', $artist->id)
-                                            ->where(function($query) {
-                                                $query->where('rateable_type', 'App\Models\Artist')
-                                                      ->orWhere('rateable_type', 'artist');
-                                            })
-                                            ->with(['user'])
-                                            ->orderBy('created_at', 'desc')
-                                            ->limit(10)
-                                            ->get();
+                    ->where(function ($query) {
+                        $query->where('rateable_type', 'App\Models\Artist')
+                            ->orWhere('rateable_type', 'artist');
+                    })
+                    ->with(['user'])
+                    ->orderBy('created_at', 'desc')
+                    ->limit(10)
+                    ->get();
             }
-            
-            // Combine and sort all recent activity
+
             $recentActivity = collect();
-            
-            // Add plays
+
             foreach ($recentPlays as $play) {
                 $recentActivity->push([
                     'type' => 'play',
@@ -268,10 +247,8 @@ class ArtistDashboardController extends Controller
                     'action' => 'played'
                 ]);
             }
-            
-            // Add song ratings
+
             foreach ($recentRatings as $rating) {
-                // Get song information manually
                 $song = Music::find($rating->rateable_id);
                 $recentActivity->push([
                     'type' => 'rating',
@@ -283,8 +260,7 @@ class ArtistDashboardController extends Controller
                     'action' => 'rated'
                 ]);
             }
-            
-            // Add artist ratings
+
             foreach ($recentArtistRatings as $rating) {
                 $recentActivity->push([
                     'type' => 'artist_rating',
@@ -295,19 +271,15 @@ class ArtistDashboardController extends Controller
                     'action' => 'rated artist'
                 ]);
             }
-            
-            // Sort by created_at and take the most recent 10
+
             $recentActivity = $recentActivity->sortByDesc('created_at')->take(10)->values();
 
-            // Get top rated tracks
             $topRatedTracks = $uploadedMusic->sortByDesc(function ($music) {
                 return $music->ratings->avg('rating') ?? 0;
             })->take(5)->values();
 
-            // Get most viewed tracks
             $mostViewedTracks = $uploadedMusic->sortByDesc('views')->take(5);
 
-            // Monthly stats (last 6 months)
             $monthlyStats = [];
             for ($i = 5; $i >= 0; $i--) {
                 $date = now()->subMonths($i);
@@ -315,25 +287,25 @@ class ArtistDashboardController extends Controller
                 $monthEnd = $date->copy()->endOfMonth();
 
                 $monthViews = RecentlyPlayed::whereIn('song_id', $uploadedMusic->pluck('id'))
-                                          ->whereBetween('created_at', [$monthStart, $monthEnd])
-                                          ->count();
+                    ->whereBetween('created_at', [$monthStart, $monthEnd])
+                    ->count();
 
                 $monthSongRatings = Rating::whereIn('rateable_id', $uploadedMusic->pluck('id'))
-                                        ->where('rateable_type', 'App\Models\Music')
-                                        ->whereBetween('created_at', [$monthStart, $monthEnd])
-                                        ->count();
-                
+                    ->where('rateable_type', 'App\Models\Music')
+                    ->whereBetween('created_at', [$monthStart, $monthEnd])
+                    ->count();
+
                 $monthArtistRatings = 0;
                 if ($artist) {
                     $monthArtistRatings = Rating::where('rateable_id', $artist->id)
-                        ->where(function($query) {
+                        ->where(function ($query) {
                             $query->where('rateable_type', 'App\Models\Artist')
-                                  ->orWhere('rateable_type', 'artist');
+                                ->orWhere('rateable_type', 'artist');
                         })
                         ->whereBetween('created_at', [$monthStart, $monthEnd])
                         ->count();
                 }
-                
+
                 $monthlyStats[] = [
                     'month' => $date->format('M Y'),
                     'views' => $monthViews,
@@ -360,7 +332,7 @@ class ArtistDashboardController extends Controller
                 'recent_activity' => $recentActivity,
                 'top_rated_tracks' => $topRatedTracks,
                 'most_viewed_tracks' => $mostViewedTracks,
-                'all_songs' => $uploadedMusic->map(function($song) {
+                'all_songs' => $uploadedMusic->map(function ($song) {
                     return [
                         'id' => $song->id,
                         'title' => $song->title,
@@ -394,9 +366,9 @@ class ArtistDashboardController extends Controller
             $sortOrder = $request->get('sort_order', 'desc');
 
             $query = Music::where('uploaded_by', $artistId)
-                         ->with(['artist', 'ratings', 'album']);
+                ->with(['artist', 'ratings', 'album']);
 
-            // Apply sorting
+
             if ($sortBy === 'views') {
                 $query->orderBy('views', $sortOrder);
             } else {
@@ -405,16 +377,14 @@ class ArtistDashboardController extends Controller
 
             $music = $query->paginate($perPage);
 
-            // Add custom rating counts and averages
-            $music->getCollection()->each(function($musicItem) {
+            $music->getCollection()->each(function ($musicItem) {
                 $musicItem->ratings_count = $musicItem->getAllRatingsCount();
                 $musicItem->avg_rating = $musicItem->getAllRatingsAvg();
-                $musicItem->upload_status = 'approved'; // Mark as approved
-                $musicItem->request_id = null; // No request ID for approved music
-                
-                // Load actual rating data
+                $musicItem->upload_status = 'approved';
+                $musicItem->request_id = null;
+
                 $ratings = $musicItem->getAllRatings()->with('user')->get();
-                $musicItem->ratings = $ratings->map(function($rating) {
+                $musicItem->ratings = $ratings->map(function ($rating) {
                     return [
                         'id' => $rating->id,
                         'rating' => $rating->rating,
@@ -427,7 +397,7 @@ class ArtistDashboardController extends Controller
                 });
             });
 
-            // Sort by rating if requested (after getting the data)
+
             if ($sortBy === 'rating') {
                 $sortedCollection = $music->getCollection()->sortBy('avg_rating');
                 if ($sortOrder === 'desc') {
@@ -436,29 +406,28 @@ class ArtistDashboardController extends Controller
                 $music->setCollection($sortedCollection);
             }
 
-            // Transform data to include additional stats
+
             $music->getCollection()->transform(function ($song) {
                 $song->song_cover_url = $song->song_cover_path ? asset('storage/' . $song->song_cover_path) : null;
                 $song->file_url = $song->file_path ? asset('storage/' . $song->file_path) : null;
                 $song->average_rating = round($song->avg_rating ?? 0, 2);
 
-                // Get recent plays count (last 30 days)
+
                 $song->recent_plays = RecentlyPlayed::where('song_id', $song->id)
-                                                  ->where('created_at', '>=', now()->subDays(30))
-                                                  ->count();
+                    ->where('created_at', '>=', now()->subDays(30))
+                    ->count();
 
                 return $song;
             });
 
-            // Get upload requests for this artist
+
             $uploadRequests = \App\Models\MusicUploadRequest::where('user_id', $artistId)
                 ->with(['songArtist', 'album'])
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($request) {
-                    // Create a music-like object from the request
                     $music = new \stdClass();
-                    $music->id = 'request_' . $request->id; // Unique ID for requests
+                    $music->id = 'request_' . $request->id;
                     $music->title = $request->song_title;
                     $music->song_cover_path = $request->song_cover_path;
                     $music->file_path = $request->file_path;
@@ -466,13 +435,13 @@ class ArtistDashboardController extends Controller
                     $music->description = $request->description ?? '';
                     $music->lyrics = $request->lyrics ?? '';
                     $music->release_date = $request->release_date;
-                    $music->views = 0; // No views for pending requests
+                    $music->views = 0;
                     $music->uploaded_by = $request->user_id;
                     $music->created_at = $request->created_at;
-                    $music->upload_status = $request->status; // pending, approved, rejected
+                    $music->upload_status = $request->status;
                     $music->request_id = $request->id;
                     $music->admin_notes = $request->admin_notes;
-                    $music->ratings_count = 0; // No ratings for requests
+                    $music->ratings_count = 0;
                     $music->avg_rating = 0;
                     $music->ratings = [];
                     $music->average_rating = 0;
@@ -480,12 +449,10 @@ class ArtistDashboardController extends Controller
                     $music->song_cover_url = $request->song_cover_path ? asset('storage/' . $request->song_cover_path) : null;
                     $music->file_url = $request->file_path ? asset('storage/' . $request->file_path) : null;
 
-                    // Artist information
                     if ($request->songArtist) {
                         $music->artist = $request->songArtist;
                     }
 
-                    // Album information
                     if ($request->album) {
                         $music->album = $request->album;
                     }
@@ -493,18 +460,15 @@ class ArtistDashboardController extends Controller
                     return $music;
                 });
 
-            // Combine approved music and upload requests
             $allMusic = $music->getCollection()->concat($uploadRequests)
                 ->sortByDesc('created_at')
                 ->values();
 
-            // Create a new paginator with the combined data
             $perPage = $request->get('per_page', 15);
             $currentPage = $request->get('page', 1);
             $offset = ($currentPage - 1) * $perPage;
             $paginatedMusic = $allMusic->slice($offset, $perPage);
 
-            // Create pagination metadata
             $pagination = [
                 'current_page' => $currentPage,
                 'per_page' => $perPage,
@@ -543,19 +507,17 @@ class ArtistDashboardController extends Controller
         try {
             $artistId = auth()->id();
             $perPage = $request->get('per_page', 15);
-            
-            // Simple query without complex relationships
+
             $query = Music::where('uploaded_by', $artistId);
-            
+
             $music = $query->paginate($perPage);
-            
-            // Transform data to include URLs
+
             $music->getCollection()->transform(function ($song) {
                 $song->song_cover_url = $song->song_cover_path ? asset('storage/' . $song->song_cover_path) : null;
                 $song->file_url = $song->file_path ? asset('storage/' . $song->file_path) : null;
                 return $song;
             });
-            
+
             return response()->json([
                 'success' => true,
                 'music' => $music,
@@ -582,13 +544,13 @@ class ArtistDashboardController extends Controller
     {
         try {
             $artistId = auth()->id();
-            
+
             $song = Music::where('id', $songId)
-                        ->where('uploaded_by', $artistId)
-                        ->with(['artist', 'album'])
-                        ->withCount(['ratings'])
-                        ->withAvg('ratings', 'rating')
-                        ->first();
+                ->where('uploaded_by', $artistId)
+                ->with(['artist', 'album'])
+                ->withCount(['ratings'])
+                ->withAvg('ratings', 'rating')
+                ->first();
 
             if (!$song) {
                 return response()->json([
@@ -597,41 +559,37 @@ class ArtistDashboardController extends Controller
                 ], 404);
             }
 
-            // Get ratings breakdown
             $ratingsBreakdown = Rating::where('rateable_id', $songId)
-                                    ->where('rateable_type', 'App\Models\Music')
-                                    ->selectRaw('rating, COUNT(*) as count')
-                                    ->groupBy('rating')
-                                    ->orderBy('rating', 'desc')
-                                    ->get();
+                ->where('rateable_type', 'App\Models\Music')
+                ->selectRaw('rating, COUNT(*) as count')
+                ->groupBy('rating')
+                ->orderBy('rating', 'desc')
+                ->get();
 
-            // Get recent plays
             $recentPlays = RecentlyPlayed::where('song_id', $songId)
-                                       ->with(['user'])
-                                       ->orderBy('created_at', 'desc')
-                                       ->limit(20)
-                                       ->get();
+                ->with(['user'])
+                ->orderBy('created_at', 'desc')
+                ->limit(20)
+                ->get();
 
-            // Get daily plays for last 30 days
             $dailyPlays = [];
             for ($i = 29; $i >= 0; $i--) {
                 $date = now()->subDays($i);
                 $plays = RecentlyPlayed::where('song_id', $songId)
-                                     ->whereDate('created_at', $date)
-                                     ->count();
+                    ->whereDate('created_at', $date)
+                    ->count();
                 $dailyPlays[] = [
                     'date' => $date->format('Y-m-d'),
                     'plays' => $plays,
                 ];
             }
 
-            // Get all ratings with user info
             $allRatings = Rating::where('rateable_id', $songId)
-                              ->where('rateable_type', 'App\Models\Music')
-                              ->with(['user'])
-                              ->orderBy('created_at', 'desc')
-                              ->limit(50)
-                              ->get();
+                ->where('rateable_type', 'App\Models\Music')
+                ->with(['user'])
+                ->orderBy('created_at', 'desc')
+                ->limit(50)
+                ->get();
 
             $song->song_cover_url = $song->song_cover_path ? asset('storage/' . $song->song_cover_path) : null;
             $song->file_url = $song->file_path ? asset('storage/' . $song->file_path) : null;
@@ -660,10 +618,10 @@ class ArtistDashboardController extends Controller
     {
         try {
             $artistId = auth()->id();
-            
+
             $song = Music::where('id', $songId)
-                        ->where('uploaded_by', $artistId)
-                        ->first();
+                ->where('uploaded_by', $artistId)
+                ->first();
 
             if (!$song) {
                 return response()->json([
@@ -672,7 +630,6 @@ class ArtistDashboardController extends Controller
                 ], 404);
             }
 
-            // Delete files from storage
             if ($song->file_path && Storage::disk('public')->exists($song->file_path)) {
                 Storage::disk('public')->delete($song->file_path);
             }
@@ -681,14 +638,12 @@ class ArtistDashboardController extends Controller
                 Storage::disk('public')->delete($song->song_cover_path);
             }
 
-            // Delete related records
             Rating::where('rateable_id', $songId)
-                  ->where('rateable_type', 'App\Models\Music')
-                  ->delete();
+                ->where('rateable_type', 'App\Models\Music')
+                ->delete();
 
             RecentlyPlayed::where('song_id', $songId)->delete();
 
-            // Delete the song record
             $song->delete();
 
             return response()->json([
@@ -711,10 +666,10 @@ class ArtistDashboardController extends Controller
     {
         try {
             $artistId = auth()->id();
-            
+
             $song = Music::where('id', $songId)
-                        ->where('uploaded_by', $artistId)
-                        ->first();
+                ->where('uploaded_by', $artistId)
+                ->first();
 
             if (!$song) {
                 return response()->json([
@@ -732,7 +687,11 @@ class ArtistDashboardController extends Controller
             ]);
 
             $song->update($request->only([
-                'title', 'genre', 'description', 'lyrics', 'release_date'
+                'title',
+                'genre',
+                'description',
+                'lyrics',
+                'release_date'
             ]));
 
             return response()->json([
@@ -757,20 +716,17 @@ class ArtistDashboardController extends Controller
         try {
             $artistId = auth()->id();
             $user = auth()->user();
-            
-            // Test the exact same query as getMyMusic
+
             $query = Music::where('uploaded_by', $artistId)
-                         ->with(['artist', 'ratings', 'album'])
-                         ->withCount(['ratings']);
-            
+                ->with(['artist', 'ratings', 'album'])
+                ->withCount(['ratings']);
+
             $query->withAvg('ratings', 'rating');
-            
-            // Test without pagination first
+
             $allMusic = $query->get();
-            
-            // Test with pagination
+
             $paginatedMusic = $query->paginate(15);
-            
+
             return response()->json([
                 'success' => true,
                 'debug_info' => [
@@ -780,7 +736,7 @@ class ArtistDashboardController extends Controller
                     'all_music_count' => $allMusic->count(),
                     'paginated_music_count' => $paginatedMusic->count(),
                     'paginated_total' => $paginatedMusic->total(),
-                    'sample_music' => $allMusic->take(3)->map(function($music) {
+                    'sample_music' => $allMusic->take(3)->map(function ($music) {
                         return [
                             'id' => $music->id,
                             'title' => $music->title,
@@ -809,10 +765,8 @@ class ArtistDashboardController extends Controller
     private function fixSongOwnership()
     {
         try {
-            // First, link artists to their corresponding users if not already linked
             $this->linkArtistsToUsers();
-            
-            // Get all artists with their user IDs
+
             $artists = \App\Models\Artist::with('user')->get();
             $artistUserMap = [];
             foreach ($artists as $artist) {
@@ -820,14 +774,13 @@ class ArtistDashboardController extends Controller
                     $artistUserMap[$artist->artist_name] = $artist->user->id;
                 }
             }
-            
-            // Fix songs that are assigned to wrong users
+
             $songs = \App\Models\Music::with('artist')->get();
             foreach ($songs as $song) {
                 if ($song->artist) {
                     $artistName = $song->artist->artist_name;
                     $correctUserId = $artistUserMap[$artistName] ?? null;
-                    
+
                     if ($correctUserId && $song->uploaded_by != $correctUserId) {
                         $song->update(['uploaded_by' => $correctUserId]);
                         \Log::info("Fixed song ownership: {$song->title} -> User {$correctUserId}");
@@ -838,7 +791,7 @@ class ArtistDashboardController extends Controller
             \Log::error('Error fixing song ownership: ' . $e->getMessage());
         }
     }
-    
+
     /**
      * Link artists to their corresponding users
      */
@@ -847,13 +800,12 @@ class ArtistDashboardController extends Controller
         try {
             $users = \App\Models\User::where('role', 'artist')->get();
             $artists = \App\Models\Artist::all();
-            
+
             foreach ($artists as $artist) {
-                // Find matching user by name
-                $matchingUser = $users->first(function($user) use ($artist) {
+                $matchingUser = $users->first(function ($user) use ($artist) {
                     return strtolower($user->name) === strtolower($artist->artist_name);
                 });
-                
+
                 if ($matchingUser && !$artist->user_id) {
                     $artist->update(['user_id' => $matchingUser->id]);
                     \Log::info("Linked artist {$artist->artist_name} to user {$matchingUser->name}");
@@ -869,13 +821,11 @@ class ArtistDashboardController extends Controller
         if (!$path) {
             return null;
         }
-        
-        // Check if it's already a full URL
+
         if (filter_var($path, FILTER_VALIDATE_URL)) {
             return $path;
         }
-        
-        // Generate asset URL for relative path
+
         return asset('storage/' . $path);
     }
 }

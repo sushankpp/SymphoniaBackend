@@ -21,7 +21,6 @@ class PlaylistController extends Controller
                 'playlist_name' => 'required|string|max:255',
             ]);
 
-            // Check if user can create playlists
             $user = auth()->user();
             if (!$user->canCreatePlaylists()) {
                 return response()->json(['error' => 'Artists cannot create playlists'], 403);
@@ -41,7 +40,7 @@ class PlaylistController extends Controller
                 'user_id' => auth()->id(),
                 'request_data' => $request->all()
             ]);
-            
+
             return response()->json([
                 'error' => 'Failed to create playlist',
                 'message' => $e->getMessage()
@@ -51,7 +50,6 @@ class PlaylistController extends Controller
 
     public function addSong(Request $request, Playlist $playlist)
     {
-        // Check if user owns this playlist
         if ($playlist->user_id !== auth()->id()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -66,7 +64,6 @@ class PlaylistController extends Controller
 
     public function getSongs(Playlist $playlist)
     {
-        // Check if user owns this playlist
         if ($playlist->user_id !== auth()->id()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }

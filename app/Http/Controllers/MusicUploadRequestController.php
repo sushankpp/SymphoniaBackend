@@ -28,15 +28,13 @@ class MusicUploadRequestController extends Controller
             ]);
 
             $user = auth()->user();
-            
-            // Ensure user is an artist
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'error' => 'Only artists can submit music upload requests'
                 ], 403);
             }
 
-            // Get artist record
             $artist = Artist::where('user_id', $user->id)->first();
             if (!$artist) {
                 return response()->json([
@@ -44,18 +42,14 @@ class MusicUploadRequestController extends Controller
                 ], 404);
             }
 
-            // Auto-detect artist ID for the song
             $artistIdForSong = $validated['artist_id'] ?? $artist->id;
 
-            // Store audio file temporarily
             $audioFile = $request->file('audio_file');
             $audioPath = $audioFile->store('temp_uploads/audio', 'public');
 
-            // Store cover image temporarily
             $coverFile = $request->file('cover_image');
             $coverPath = $coverFile->store('temp_uploads/covers', 'public');
 
-            // Validate that files were stored successfully
             if (!Storage::disk('public')->exists($audioPath)) {
                 throw new \Exception('Failed to store audio file');
             }
@@ -63,7 +57,6 @@ class MusicUploadRequestController extends Controller
                 throw new \Exception('Failed to store cover image');
             }
 
-            // Create upload request
             $uploadRequest = MusicUploadRequest::create([
                 'artist_id' => $artist->id,
                 'user_id' => $user->id,
@@ -106,7 +99,7 @@ class MusicUploadRequestController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'artist') {
                 return response()->json([
                     'error' => 'Only artists can view their upload requests'
@@ -175,7 +168,7 @@ class MusicUploadRequestController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'admin') {
                 return response()->json([
                     'error' => 'Only admins can view all upload requests'
@@ -184,12 +177,10 @@ class MusicUploadRequestController extends Controller
 
             $query = MusicUploadRequest::with(['user', 'artist', 'songArtist', 'album']);
 
-            // Filter by status
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
 
-            // Filter by artist
             if ($request->has('artist_id')) {
                 $query->where('artist_id', $request->artist_id);
             }
@@ -216,7 +207,7 @@ class MusicUploadRequestController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'admin') {
                 return response()->json([
                     'error' => 'Only admins can approve upload requests'
@@ -261,7 +252,7 @@ class MusicUploadRequestController extends Controller
     {
         try {
             $user = auth()->user();
-            
+
             if ($user->role !== 'admin') {
                 return response()->json([
                     'error' => 'Only admins can reject upload requests'

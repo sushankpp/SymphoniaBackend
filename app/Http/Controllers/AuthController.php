@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
-    // Login function
     public function login(Request $request)
     {
         $request->validate([
@@ -40,7 +39,6 @@ class AuthController extends Controller
 
 
 
-    // Register function
     public function register(Request $request)
     {
         $request->validate([
@@ -58,7 +56,7 @@ class AuthController extends Controller
 
         if ($request->hasFile('profile_picture')) {
             $path = $request->file('profile_picture')->storeAs('images/profile_pictures/', $user->id . '_' . time() . '.jpg', 'public');
-            $user->profile_picture = $path; // Store relative path, not full URL
+            $user->profile_picture = $path;
             $user->save();
         }
 
@@ -71,7 +69,6 @@ class AuthController extends Controller
         ], 201);
     }
 
-    // Logout function
     public function logout(Request $request)
     {
         Auth::logout();
@@ -80,17 +77,15 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out successfully'], 200);
     }
 
-    // Get authenticated user
     public function getAuthenticatedUser(Request $request)
     {
         try {
             $user = auth()->user();
-            
+
             if (!$user) {
                 return response()->json(['message' => 'User not authenticated'], 401);
             }
 
-            // Return user data directly for compatibility
             return response()->json([
                 'id' => $user->id,
                 'name' => $user->name,
@@ -114,12 +109,11 @@ class AuthController extends Controller
 
 
 
-    // Update user profile
     public function updateProfile(Request $request)
     {
         try {
             $user = auth()->user();
-            
+
             if (!$user) {
                 return response()->json(['message' => 'User not authenticated'], 401);
             }
@@ -136,22 +130,22 @@ class AuthController extends Controller
             ]);
 
             $updateData = $request->only([
-                'name', 'email', 'gender', 'phone', 'bio', 'address'
+                'name',
+                'email',
+                'gender',
+                'phone',
+                'bio',
+                'address'
             ]);
 
-            // Handle date of birth
             if ($request->has('dob')) {
                 $updateData['dob'] = $request->dob;
             }
 
-            // Handle profile picture upload
             if ($request->hasFile('profile_picture')) {
-                // Delete old profile picture if exists
                 if ($user->profile_picture) {
-                    // Handle both full URLs and relative paths
                     $oldPath = $user->profile_picture;
                     if (filter_var($oldPath, FILTER_VALIDATE_URL)) {
-                        // If it's a full URL, extract the relative path
                         $oldPath = str_replace('/storage/', '', $oldPath);
                     }
                     if (Storage::disk('public')->exists($oldPath)) {
@@ -159,17 +153,16 @@ class AuthController extends Controller
                     }
                 }
 
-                // Store new profile picture
                 $path = $request->file('profile_picture')->storeAs(
-                    'images/profile_pictures/', 
-                    $user->id . '_' . time() . '.jpg', 
+                    'images/profile_pictures/',
+                    $user->id . '_' . time() . '.jpg',
                     'public'
                 );
-                $updateData['profile_picture'] = $path; // Store relative path, not full URL
+                $updateData['profile_picture'] = $path;
             }
 
             $user->update($updateData);
-            $user->refresh(); // Refresh to get updated data
+            $user->refresh();
 
             return response()->json([
                 'message' => 'Profile updated successfully',
@@ -197,52 +190,47 @@ class AuthController extends Controller
         }
     }
 
-    // Google OAuth redirect
     public function redirectToGoogle()
     {
-        // Configure HTTP client based on environment
         $httpClientConfig = [
             'timeout' => 30,
         ];
-        
+
         if (app()->environment('local')) {
             $httpClientConfig['verify'] = false;
         }
-        
+
         $httpClient = new \GuzzleHttp\Client($httpClientConfig);
-        
+
         return Socialite::driver('google')
             ->setHttpClient($httpClient)
             ->stateless()
             ->redirect();
     }
 
-        // Google OAuth callback
     public function handleGoogleCallback(Request $request)
     {
         try {
             $httpClientConfig = [
                 'timeout' => 30,
             ];
-            
+
             if (app()->environment('local')) {
                 $httpClientConfig['verify'] = false;
             }
-            
+
             $httpClient = new \GuzzleHttp\Client($httpClientConfig);
-            
+
             $googleUser = Socialite::driver('google')
                 ->setHttpClient($httpClient)
                 ->stateless()
                 ->user();
-            
+
             $adminEmail = env('GOOGLE_ADMIN_EMAIL');
 
-            // Find or create user
             $user = User::where('email', $googleUser->email)->first();
 
             if ($user) {
-                // Update existing user
                 $user->update([
                     'name' => $googleUser->name,
                     'google_id' => $googleUser->id,
@@ -251,7 +239,6 @@ class AuthController extends Controller
                     'role' => $googleUser->email === $adminEmail ? 'admin' : 'user',
                 ]);
             } else {
-                // Create new user
                 $user = User::create([
                     'name' => $googleUser->name,
                     'email' => $googleUser->email,
@@ -263,12 +250,10 @@ class AuthController extends Controller
                 ]);
             }
 
-            // Mark email as verified
             if (!$user->hasVerifiedEmail()) {
                 $user->markEmailAsVerified();
             }
 
-            // Download and save profile picture
             if ($googleUser->avatar) {
                 try {
                     $imageContents = file_get_contents($googleUser->avatar);
@@ -283,10 +268,8 @@ class AuthController extends Controller
                 }
             }
 
-            // Create Bearer token for API authentication
             $token = $user->createToken('google_auth_token')->plainTextToken;
 
-            // Redirect to frontend callback with token
             return redirect()->away(env('FRONTEND_URL', 'http://localhost:5173') . '/auth/callback?success=true&token=' . urlencode($token));
 
         } catch (\Throwable $e) {
@@ -295,7 +278,6 @@ class AuthController extends Controller
         }
     }
 
-    // Email verification
     public function verifyEmail(Request $request, $id, $hash)
     {
         $user = User::find($id);
@@ -315,7 +297,6 @@ class AuthController extends Controller
         return redirect(env('FRONTEND_URL', 'http://localhost:5173') . '/');
     }
 
-    // Send verification email
     public function sendVerificationEmail(Request $request)
     {
         $user = $request->user();
