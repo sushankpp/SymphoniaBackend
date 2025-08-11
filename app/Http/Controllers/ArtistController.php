@@ -66,12 +66,12 @@ class ArtistController extends Controller
             return null;
         }
         
-        // Check if it's already a full URL
+  
         if (filter_var($path, FILTER_VALIDATE_URL)) {
             return $path;
         }
         
-        // Generate asset URL for relative path
+      
         return asset('storage/' . $path);
     }
 }

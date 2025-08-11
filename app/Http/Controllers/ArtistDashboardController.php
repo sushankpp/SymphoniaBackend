@@ -508,7 +508,23 @@ class ArtistDashboardController extends Controller
             $artistId = auth()->id();
             $perPage = $request->get('per_page', 15);
 
+            // Debug: Check if user is authenticated
+            if (!$artistId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated',
+                    'debug' => [
+                        'authenticated' => auth()->check(),
+                        'user_id' => $artistId
+                    ]
+                ], 401);
+            }
+
             $query = Music::where('uploaded_by', $artistId);
+
+            // Debug: Check total songs for this user
+            $totalSongsForUser = Music::where('uploaded_by', $artistId)->count();
+            $totalSongsInDB = Music::count();
 
             $music = $query->paginate($perPage);
 
@@ -524,7 +540,11 @@ class ArtistDashboardController extends Controller
                 'debug' => [
                     'artist_id' => $artistId,
                     'total_found' => $music->total(),
-                    'current_page' => $music->currentPage()
+                    'current_page' => $music->currentPage(),
+                    'total_songs_for_user' => $totalSongsForUser,
+                    'total_songs_in_db' => $totalSongsInDB,
+                    'authenticated' => auth()->check(),
+                    'user_email' => auth()->user() ? auth()->user()->email : null
                 ]
             ]);
         } catch (\Exception $e) {

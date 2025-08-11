@@ -63,6 +63,9 @@ Route::post('/auth/register', [AuthController::class, 'register']);
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
+// Password Change Route (no authentication required)
+Route::post('/auth/change-password', [AuthController::class, 'forgotPassword']);
+
 // Recommendations and trending content (work for both authenticated and non-authenticated users)
 Route::get('/recommendations', [\App\Http\Controllers\MusicController::class, 'getRecommendations']);
 Route::get('/top-recommendations', [\App\Http\Controllers\MusicController::class, 'getTopRecommendations']);
@@ -136,7 +139,9 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 
     Route::get('/role-requests', [\App\Http\Controllers\AdminController::class, 'getRoleChangeRequests']);
     Route::patch('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
+    Route::post('/role-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveRoleChangeRequest']);
     Route::patch('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
+    Route::post('/role-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectRoleChangeRequest']);
     Route::get('/music-upload-requests', [\App\Http\Controllers\AdminController::class, 'getMusicUploadRequests']);
     Route::get('/test-role-change/{userId}', [\App\Http\Controllers\AdminController::class, 'testRoleChange']);
 });
@@ -302,10 +307,9 @@ Route::middleware(['auth:sanctum', 'artist'])->group(function () {
 
 // Music upload request admin routes
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
-    Route::get('/admin/music-upload-requests', [\App\Http\Controllers\MusicUploadRequestController::class, 'index']);
-    Route::get('/admin/music-upload-requests/{id}', [\App\Http\Controllers\MusicUploadRequestController::class, 'show']);
-    Route::post('/admin/music-upload-requests/{id}/approve', [\App\Http\Controllers\MusicUploadRequestController::class, 'approve']);
-    Route::post('/admin/music-upload-requests/{id}/reject', [\App\Http\Controllers\MusicUploadRequestController::class, 'reject']);
+    Route::get('/admin/music-upload-requests', [\App\Http\Controllers\AdminController::class, 'getMusicUploadRequests']);
+    Route::post('/admin/music-upload-requests/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveMusicUploadRequest']);
+    Route::post('/admin/music-upload-requests/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectMusicUploadRequest']);
 });
 Route::get('/uploaded-music', [\App\Http\Controllers\MusicController::class, 'getUploadedMusic']);
 Route::get('/artists', [\App\Http\Controllers\ArtistController::class, 'index']);
@@ -448,12 +452,16 @@ Route::get('/test-user-data', function (Request $request) {
         // Get fresh data from database
         $user->refresh();
 
+        // Get user's uploaded songs
+        $userSongs = \App\Models\Music::where('uploaded_by', $user->id)->get(['id', 'title', 'created_at']);
+
         return response()->json([
             'success' => true,
             'user_data' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'role' => $user->role,
                 'bio' => $user->bio,
                 'gender' => $user->gender,
                 'dob' => $user->dob,
@@ -462,7 +470,9 @@ Route::get('/test-user-data', function (Request $request) {
                 'profile_picture' => $user->profile_picture,
                 'updated_at' => $user->updated_at,
                 'created_at' => $user->created_at
-            ]
+            ],
+            'user_songs' => $userSongs,
+            'total_songs' => $userSongs->count()
         ]);
     } catch (\Exception $e) {
         Log::error('User data test failed:', [
@@ -598,6 +608,52 @@ Route::middleware(['web'])->group(function () {
         }
     });
 });
+
+// Test music-simple endpoint without artist middleware
+Route::get('/test-music-simple', function (Request $request) {
+    try {
+        $user = auth()->user();
+        
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not authenticated'
+            ], 401);
+        }
+
+        $artistId = $user->id;
+        $perPage = $request->get('per_page', 15);
+
+        $query = \App\Models\Music::where('uploaded_by', $artistId);
+        $music = $query->paginate($perPage);
+
+        $music->getCollection()->transform(function ($song) {
+            $song->song_cover_url = $song->song_cover_path ? asset('storage/' . $song->song_cover_path) : null;
+            $song->file_url = $song->file_path ? asset('storage/' . $song->file_path) : null;
+            return $song;
+        });
+
+        return response()->json([
+            'success' => true,
+            'music' => $music,
+            'debug' => [
+                'artist_id' => $artistId,
+                'user_role' => $user->role,
+                'total_found' => $music->total(),
+                'current_page' => $music->currentPage(),
+                'authenticated' => auth()->check(),
+                'user_email' => $user->email
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch music',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+})->middleware('auth:sanctum');
 
 // Test session login
 Route::middleware(['web'])->group(function () {

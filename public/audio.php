@@ -1,48 +1,77 @@
 <?php
+
+// Set CORS headers
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin');
 
+// Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
+    exit(0);
 }
 
-$filename = $_GET['file'] ?? '';
-$type = $_GET['type'] ?? 'normal';
+// Get parameters
+$file = $_GET['file'] ?? '';
+$type = $_GET['type'] ?? 'audio';
 
-if (empty($filename)) {
-    http_response_code(404);
-    exit('File not found');
+// Validate file parameter
+if (empty($file)) {
+    http_response_code(400);
+    echo 'File parameter is required';
+    exit;
 }
 
-$basePath = '../storage/app/public/';
-if ($type === 'compressed') {
-    $basePath .= 'audios/compressed/';
-} elseif ($type === 'audio') {
-    $basePath .= 'audios/';
-} elseif ($type === 'cover') {
-    $basePath .= 'songs_cover/';
-} elseif ($type === 'artist' || $type === 'artist_image') {
-    $basePath .= 'artist_image/';
-} elseif ($type === 'albums_cover' || $type === 'album') {
-    $basePath .= 'albums_cover/';
+// Security: prevent directory traversal
+$file = basename($file);
+
+// Determine file path based on type
+if ($type === 'cover') {
+    $filePath = __DIR__ . '/storage/songs_cover/' . $file;
+    $contentType = 'image/jpeg'; // Default to JPEG
 } else {
-    $basePath .= 'audios/';
+    $filePath = __DIR__ . '/storage/audios/compressed/' . $file;
+    $contentType = 'audio/mpeg'; // Default to MP3
 }
 
-$filePath = $basePath . $filename;
-
+// Check if file exists
 if (!file_exists($filePath)) {
     http_response_code(404);
-    exit('File not found: ' . $filePath);
+    echo 'File not found';
+    exit;
 }
 
-$mimeType = mime_content_type($filePath);
-$fileSize = filesize($filePath);
+// Set appropriate content type based on file extension
+$extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+switch ($extension) {
+    case 'jpg':
+    case 'jpeg':
+        $contentType = 'image/jpeg';
+        break;
+    case 'png':
+        $contentType = 'image/png';
+        break;
+    case 'gif':
+        $contentType = 'image/gif';
+        break;
+    case 'mp3':
+        $contentType = 'audio/mpeg';
+        break;
+    case 'm4a':
+        $contentType = 'audio/mp4';
+        break;
+    case 'wav':
+        $contentType = 'audio/wav';
+        break;
+    case 'ogg':
+        $contentType = 'audio/ogg';
+        break;
+}
 
-header('Content-Type: ' . $mimeType);
-header('Content-Length: ' . $fileSize);
+// Set headers
+header('Content-Type: ' . $contentType);
+header('Content-Length: ' . filesize($filePath));
+header('Accept-Ranges: bytes');
 header('Cache-Control: public, max-age=31536000');
 
+// Output file
 readfile($filePath);

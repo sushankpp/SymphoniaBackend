@@ -455,4 +455,132 @@ class AdminController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Approve music upload request
+     */
+    public function approveMusicUploadRequest(Request $request, $requestId)
+    {
+        try {
+            $user = auth()->user();
+
+            if ($user->role !== 'admin') {
+                return response()->json([
+                    'error' => 'Only admins can approve music upload requests'
+                ], 403);
+            }
+
+            $uploadRequest = \App\Models\MusicUploadRequest::find($requestId);
+
+            if (!$uploadRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Music upload request not found'
+                ], 404);
+            }
+
+            if ($uploadRequest->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This request has already been processed'
+                ], 400);
+            }
+
+            $adminNotes = $request->get('admin_notes');
+            
+            if ($uploadRequest->approve($adminNotes)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Music upload request approved successfully',
+                    'request' => $uploadRequest->load(['user', 'artist', 'songArtist', 'album'])
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to approve music upload request'
+                ], 500);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to approve music upload request', [
+                'request_id' => $requestId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to approve music upload request: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Reject music upload request
+     */
+    public function rejectMusicUploadRequest(Request $request, $requestId)
+    {
+        try {
+            $user = auth()->user();
+
+            if ($user->role !== 'admin') {
+                return response()->json([
+                    'error' => 'Only admins can reject music upload requests'
+                ], 403);
+            }
+
+            $uploadRequest = \App\Models\MusicUploadRequest::find($requestId);
+
+            if (!$uploadRequest) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Music upload request not found'
+                ], 404);
+            }
+
+            if ($uploadRequest->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This request has already been processed'
+                ], 400);
+            }
+
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'admin_notes' => 'required|string|max:1000'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Admin notes are required for rejection',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            if ($uploadRequest->reject($request->admin_notes)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Music upload request rejected',
+                    'request' => $uploadRequest->load(['user', 'artist', 'songArtist', 'album'])
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to reject music upload request'
+                ], 500);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to reject music upload request', [
+                'request_id' => $requestId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reject music upload request: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

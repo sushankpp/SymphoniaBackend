@@ -65,8 +65,8 @@ class MusicUploadRequest extends Model
                     throw new \Exception("Cover image not found: {$this->song_cover_path}");
                 }
 
-                $finalAudioPath = $this->moveFileToFinalLocation($this->file_path, 'audios');
-                $finalCoverPath = $this->moveFileToFinalLocation($this->song_cover_path, 'albums_cover');
+                $finalAudioPath = $this->moveFileToFinalLocation($this->file_path, 'audios/compressed');
+                $finalCoverPath = $this->moveFileToFinalLocation($this->song_cover_path, 'songs_cover');
 
                 if (!$finalAudioPath || !$finalCoverPath) {
                     throw new \Exception("Failed to move files to final location");

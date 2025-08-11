@@ -71,6 +71,13 @@ class RoleChangeRequest extends Model
 
                 if ($this->user) {
                     $oldRole = $this->user->role;
+                    
+                    \Log::info('Attempting to update user role', [
+                        'user_id' => $this->user_id,
+                        'old_role' => $oldRole,
+                        'new_role' => $this->requested_role
+                    ]);
+                    
                     $updated = $this->user->update(['role' => $this->requested_role]);
 
                     if (!$updated) {
@@ -141,17 +148,16 @@ class RoleChangeRequest extends Model
 
     private function assignMusicToArtist()
     {
-        $musicCount = \App\Models\Music::where('uploaded_by', '!=', $this->user_id)->count();
+        // Only assign music that was uploaded by this user but doesn't have an artist record
+        $musicCount = \App\Models\Music::where('uploaded_by', $this->user_id)->count();
 
         if ($musicCount > 0) {
-            \App\Models\Music::query()->update(['uploaded_by' => $this->user_id]);
-
-            \Log::info('Music assigned to new artist', [
+            \Log::info('Music already belongs to new artist', [
                 'user_id' => $this->user_id,
                 'music_count' => $musicCount
             ]);
         } else {
-            \Log::info('No music to assign - artist already owns all music', [
+            \Log::info('No music to assign - artist has no uploaded music yet', [
                 'user_id' => $this->user_id
             ]);
         }

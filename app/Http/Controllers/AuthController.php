@@ -299,13 +299,45 @@ class AuthController extends Controller
 
     public function sendVerificationEmail(Request $request)
     {
-        $user = $request->user();
-
-        if ($user && !$user->hasVerifiedEmail()) {
-            $user->sendEmailVerificationNotification();
-            return response()->json(['message' => 'Verification link sent!', 'status' => 200]);
+        $user = auth()->user();
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email already verified'], 400);
         }
 
-        return response()->json(['message' => 'Email already verified or user not authenticated.', 'status' => 400], 400);
+        $user->sendEmailVerificationNotification();
+        return response()->json(['message' => 'Verification email sent successfully']);
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'new_password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+
+        $user->password = bcrypt($request->new_password);
+        $user->save();
+
+        return response()->json([
+            'message' => 'Password changed successfully',
+            'success' => true
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        return response()->json(['message' => 'Use forgot-password endpoint instead'], 400);
+    }
+
+    public function verifyResetToken(Request $request)
+    {
+        return response()->json(['message' => 'Use forgot-password endpoint instead'], 400);
     }
 }
