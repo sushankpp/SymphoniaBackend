@@ -22,10 +22,11 @@ class RecommendationEngine
             ];
 
             $tfidf_vector = $this->calculateTFIDF($features);
-            return $tfidf_vector;
+
+            return $this->normalizeVector($tfidf_vector);
         } catch (\Exception $e) {
             \Log::error('Error creating song vector', [
-                'song_id' => $song->id,
+                'song_id' => $song->id ?? null,
                 'error' => $e->getMessage()
             ]);
             throw $e;
@@ -35,7 +36,7 @@ class RecommendationEngine
     private function calculateTFIDF($features)
     {
         try {
-            $total_songs = Music::count();
+            $total_songs = max(1, Music::count());
             $tfidf = [];
 
             foreach ($features as $feature => $value) {
@@ -47,6 +48,8 @@ class RecommendationEngine
                         $idf = 0;
                     } else {
                         $idf = log($total_songs / ($songs_with_feature + 1));
+
+                        $idf = max(0, min($idf, 5));
                     }
 
                     $tfidf[$feature] = $tf * $idf;
@@ -114,15 +117,21 @@ class RecommendationEngine
 
     public function cosineSimilarity($user_vector, $song_vector)
     {
+        $user_vector = $this->normalizeVector($user_vector);
+        $song_vector = $this->normalizeVector($song_vector);
+
         $dot_product = 0;
         $user_magnitude = 0;
         $song_magnitude = 0;
 
-        foreach ($user_vector as $feature => $user_value) {
+        $all_features = array_unique(array_merge(array_keys($user_vector), array_keys($song_vector)));
+
+        foreach ($all_features as $feature) {
+            $user_value = $user_vector[$feature] ?? 0;
             $song_value = $song_vector[$feature] ?? 0;
             $dot_product += $user_value * $song_value;
-            $user_magnitude += $user_value * $user_value;
-            $song_magnitude += $song_value * $song_value;
+            $user_magnitude += $user_value ** 2;
+            $song_magnitude += $song_value ** 2;
         }
 
         $user_magnitude = sqrt($user_magnitude);
@@ -299,13 +308,27 @@ class RecommendationEngine
                     ];
                 })
                 ->sortByDesc('trending_score')
-                ->take($limit)
-                ->values()
-                ->toArray();
+                ->values();
 
-            return $songs;
+            // Normalize trending scores to be between 0-1
+            if ($songs->count() > 0) {
+                $max_score = $songs->first()['trending_score'];
+                $min_score = $songs->last()['trending_score'];
+                $score_range = $max_score - $min_score;
+                
+                $songs = $songs->map(function ($song) use ($max_score, $min_score, $score_range) {
+                    if ($score_range > 0) {
+                        $song['trending_score'] = ($song['trending_score'] - $min_score) / $score_range;
+                    } else {
+                        $song['trending_score'] = 0.5; // Default to middle if all scores are the same
+                    }
+                    return $song;
+                });
+            }
+
+            return $songs->take($limit)->toArray();
         } catch (\Exception $e) {
-            return Music::with(['artist', 'ratings'])
+            $songs = Music::with(['artist', 'ratings'])
                 ->orderBy('views', 'desc')
                 ->limit($limit)
                 ->get()
@@ -314,8 +337,25 @@ class RecommendationEngine
                         'song' => $song,
                         'trending_score' => $song->views ?? 0
                     ];
-                })
-                ->toArray();
+                });
+
+            // Normalize trending scores to be between 0-1
+            if ($songs->count() > 0) {
+                $max_score = $songs->max('trending_score');
+                $min_score = $songs->min('trending_score');
+                $score_range = $max_score - $min_score;
+                
+                $songs = $songs->map(function ($song) use ($max_score, $min_score, $score_range) {
+                    if ($score_range > 0) {
+                        $song['trending_score'] = ($song['trending_score'] - $min_score) / $score_range;
+                    } else {
+                        $song['trending_score'] = 0.5; // Default to middle if all scores are the same
+                    }
+                    return $song;
+                });
+            }
+
+            return $songs->toArray();
         }
     }
 

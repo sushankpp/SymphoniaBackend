@@ -83,22 +83,37 @@ class MusicController extends Controller
                         $fileSize = File::size(storage_path('app/public/' . $relativePath));
                         $music->file_size = $this->formatBytes($fileSize);
 
-                        if (strpos($relativePath, 'audios/compressed/') !== false) {
-                            $compressedFilename = basename($relativePath, '.m4a');
-                            $compressedFilename = basename($compressedFilename, '.mp3');
-
-                            $originalDir = storage_path('app/public/audios/original');
-                            $originalFiles = glob($originalDir . '/' . $compressedFilename . '_*.*');
-
-                            if (empty($originalFiles)) {
-                                $originalFiles = glob($originalDir . '/' . $compressedFilename . '.*');
+                                            // Check if this is a compressed file
+                    if (strpos($relativePath, 'audios/compressed/') !== false) {
+                        // Try to get original file info from description field
+                        $originalFileInfo = null;
+                        if (!empty($music->description)) {
+                            try {
+                                $originalFileInfo = json_decode($music->description, true);
+                            } catch (Exception $e) {
+                                Log::warning('Failed to parse original file info from description', ['error' => $e->getMessage()]);
                             }
+                        }
 
-                            Log::info('Looking for original file', [
-                                'compressed_filename' => $compressedFilename,
-                                'original_files_found' => count($originalFiles),
-                                'files' => $originalFiles
-                            ]);
+                        if ($originalFileInfo && isset($originalFileInfo['original_size'])) {
+                            // Use stored original file info
+                            $originalSize = $originalFileInfo['original_size'];
+                            $compressionRatio = round(($originalSize - $fileSize) / $originalSize * 100, 2);
+
+                            $music->compression_stats = [
+                                'original_size' => $this->formatBytes($originalSize),
+                                'compressed_size' => $music->file_size,
+                                'compression_ratio' => $compressionRatio,
+                                'space_saved' => $this->formatBytes($originalSize - $fileSize),
+                                'original_filename' => $originalFileInfo['original_filename'] ?? 'Unknown'
+                            ];
+
+                            Log::info('Compression stats from stored info', $music->compression_stats);
+                        } else {
+                            // Fallback: try to find original file by filename
+                            $compressedFilename = basename($relativePath, '.mp3');
+                            $originalDir = storage_path('app/public/audios/original');
+                            $originalFiles = glob($originalDir . '/' . $compressedFilename . '.*');
 
                             if (!empty($originalFiles)) {
                                 $originalPath = $originalFiles[0];
@@ -109,19 +124,45 @@ class MusicController extends Controller
                                     'original_size' => $this->formatBytes($originalSize),
                                     'compressed_size' => $music->file_size,
                                     'compression_ratio' => $compressionRatio,
-                                    'space_saved' => $this->formatBytes($originalSize - $fileSize)
+                                    'space_saved' => $this->formatBytes($originalSize - $fileSize),
+                                    'original_filename' => basename($originalPath)
                                 ];
 
-                                Log::info('Compression stats found', $music->compression_stats);
+                                Log::info('Compression stats found by filename matching', $music->compression_stats);
                             } else {
-                                Log::info('No original file found for compression stats', [
+                                // Estimate original size as last resort
+                                $estimatedOriginalSize = $fileSize * 1.5; // Assume 33% compression ratio
+                                $estimatedCompressionRatio = 33;
+                                $estimatedSpaceSaved = $estimatedOriginalSize - $fileSize;
+                                
+                                $music->compression_stats = [
+                                    'original_size' => $this->formatBytes($estimatedOriginalSize),
+                                    'compressed_size' => $music->file_size,
+                                    'compression_ratio' => $estimatedCompressionRatio,
+                                    'space_saved' => $this->formatBytes($estimatedSpaceSaved),
+                                    'original_filename' => 'Estimated'
+                                ];
+                                Log::info('Estimated compression stats (no original file found)', [
                                     'compressed_filename' => $compressedFilename,
-                                    'relative_path' => $relativePath
+                                    'estimated_original_size' => $this->formatBytes($estimatedOriginalSize),
+                                    'compression_ratio' => $estimatedCompressionRatio
                                 ]);
                             }
-                        } else {
-                            $music->compression_stats = null;
                         }
+                    } else {
+                        // This is an uncompressed file (direct upload or seeded data)
+                        $music->compression_stats = [
+                            'original_size' => $music->file_size,
+                            'compressed_size' => $music->file_size,
+                            'compression_ratio' => 0,
+                            'space_saved' => '0 B',
+                            'original_filename' => basename($relativePath)
+                        ];
+                    }
+                    } else {
+                        // File doesn't exist
+                        $music->file_size = 'Unknown';
+                        $music->compression_stats = null;
                     }
                 }
 
@@ -167,6 +208,57 @@ class MusicController extends Controller
                     if (File::exists(storage_path('app/public/' . $relativePath))) {
                         $fileSize = File::size(storage_path('app/public/' . $relativePath));
                         $music->file_size = $this->formatBytes($fileSize);
+
+                        // Add compression stats for upload requests too
+                        if (strpos($relativePath, 'audios/compressed/') !== false) {
+                            // Try to get original file info from description field
+                            $originalFileInfo = null;
+                            if (!empty($request->description)) {
+                                try {
+                                    $originalFileInfo = json_decode($request->description, true);
+                                } catch (Exception $e) {
+                                    Log::warning('Failed to parse original file info from description', ['error' => $e->getMessage()]);
+                                }
+                            }
+
+                            if ($originalFileInfo && isset($originalFileInfo['original_size'])) {
+                                // Use stored original file info
+                                $originalSize = $originalFileInfo['original_size'];
+                                $compressionRatio = round(($originalSize - $fileSize) / $originalSize * 100, 2);
+
+                                $music->compression_stats = [
+                                    'original_size' => $this->formatBytes($originalSize),
+                                    'compressed_size' => $music->file_size,
+                                    'compression_ratio' => $compressionRatio,
+                                    'space_saved' => $this->formatBytes($originalSize - $fileSize),
+                                    'original_filename' => $originalFileInfo['original_filename'] ?? 'Unknown'
+                                ];
+                            } else {
+                                // Estimate original size for compressed files
+                                $estimatedOriginalSize = $fileSize * 1.5; // Assume 33% compression ratio
+                                $estimatedCompressionRatio = 33;
+                                $estimatedSpaceSaved = $estimatedOriginalSize - $fileSize;
+                                
+                                $music->compression_stats = [
+                                    'original_size' => $this->formatBytes($estimatedOriginalSize),
+                                    'compressed_size' => $music->file_size,
+                                    'compression_ratio' => $estimatedCompressionRatio,
+                                    'space_saved' => $this->formatBytes($estimatedSpaceSaved),
+                                    'original_filename' => 'Estimated'
+                                ];
+                            }
+                        } else {
+                            $music->compression_stats = [
+                                'original_size' => $music->file_size,
+                                'compressed_size' => $music->file_size,
+                                'compression_ratio' => 0,
+                                'space_saved' => '0 B',
+                                'original_filename' => basename($relativePath)
+                            ];
+                        }
+                    } else {
+                        $music->file_size = 'Unknown';
+                        $music->compression_stats = null;
                     }
 
                     return $music;
@@ -208,10 +300,16 @@ class MusicController extends Controller
             $originalExtension = pathinfo($originalFilename, PATHINFO_EXTENSION);
             $originalName = pathinfo($originalFilename, PATHINFO_FILENAME);
 
+            // Use original filename with timestamp to avoid conflicts
             $uniqueFilename = $originalName . '_' . time() . '.' . $originalExtension;
             $originalAudioPath = $request->file('audio_file')->storeAs('audios/original', $uniqueFilename, 'public');
 
-            $coverPath = $request->file('cover_image')->store('albums_cover', 'public');
+            // Store cover with original name too
+            $coverFilename = $request->file('cover_image')->getClientOriginalName();
+            $coverExtension = pathinfo($coverFilename, PATHINFO_EXTENSION);
+            $coverName = pathinfo($coverFilename, PATHINFO_FILENAME);
+            $coverUniqueName = $coverName . '_' . time() . '.' . $coverExtension;
+            $coverPath = $request->file('cover_image')->storeAs('songs_cover', $coverUniqueName, 'public');
 
             $artistId = $validated['artist_id'] ?? null;
             if (!$artistId && auth()->check()) {
@@ -251,6 +349,14 @@ class MusicController extends Controller
                 throw new Exception('Failed to create compressed audio file');
             }
 
+            // Store original file info in description field as JSON
+            $originalFileInfo = [
+                'original_filename' => $originalFilename,
+                'original_size' => $originalSize,
+                'original_path' => $originalAudioPath
+            ];
+            $descriptionWithFileInfo = json_encode($originalFileInfo);
+
             $music = Music::create([
                 'title' => $validated['song_title'],
                 'file_path' => $compressedAudioPath,
@@ -258,7 +364,7 @@ class MusicController extends Controller
                 'artist_id' => $artistId,
                 'album_id' => $request->input('album_id') ?? null,
                 'genre' => $validated['genre'] ?? null,
-                'description' => $validated['description'] ?? null,
+                'description' => $descriptionWithFileInfo, // Store original file info as JSON
                 'release_date' => $validated['release_date'] ?? null,
                 'lyrics' => $validated['lyrics'] ?? null,
                 'views' => 0,
@@ -316,8 +422,8 @@ class MusicController extends Controller
     private function generateCompressedFilePath($originalPath)
     {
         $filename = basename($originalPath, '.' . pathinfo($originalPath, PATHINFO_EXTENSION));
-        $originalName = preg_replace('/_\d+$/', '', $filename);
-        return 'audios/compressed/' . $originalName . '.m4a';
+        // Keep the original filename with timestamp for compressed file
+        return 'audios/compressed/' . $filename . '.mp3';
     }
 
 
@@ -326,7 +432,7 @@ class MusicController extends Controller
         $inputPath = storage_path('app/public/' . $originalPath);
         $outputPath = storage_path('app/public/' . $compressedPath);
 
-        $ffmpegCommand = "ffmpeg -i \"$inputPath\" -c:a aac -b:a 64k -ar 44100 -ac 2 \"$outputPath\" 2>&1";
+        $ffmpegCommand = "ffmpeg -i \"$inputPath\" -c:a mp3 -b:a 128k -ar 44100 -ac 2 \"$outputPath\" 2>&1";
 
         Log::info('Starting audio compression', [
             'input' => $originalPath,

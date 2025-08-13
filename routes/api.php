@@ -96,6 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ratings', [\App\Http\Controllers\RatingController::class, 'store']);
     Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'index']);
     Route::get('/ratings/{id}', [\App\Http\Controllers\RatingController::class, 'show']);
+    Route::get('/user/ratings', [\App\Http\Controllers\RatingController::class, 'getUserRatings']);
 
     // Albums (store requires authentication)
     Route::post('/albums', [\App\Http\Controllers\AlbumController::class, 'store']);
@@ -157,6 +158,7 @@ Route::middleware(['auth:sanctum', 'artist'])->prefix('artist')->group(function 
     Route::patch('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'updateMusic']);
     Route::delete('/music/{id}', [\App\Http\Controllers\ArtistDashboardController::class, 'deleteMusic']);
     Route::get('/debug-music', [\App\Http\Controllers\ArtistDashboardController::class, 'debugMusicOwnership']);
+    Route::get('/ratings', [\App\Http\Controllers\RatingController::class, 'getArtistItemRatings']);
 });
 
 Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');

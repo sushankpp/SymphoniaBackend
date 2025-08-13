@@ -36,12 +36,10 @@ class AudioHuffmanCompressor
         }
         fclose($handle);
 
-        // Build Huffman tree and generate codes
         $tree = $this->buildTree($freq);
         $codes = [];
         $this->generateCodes($tree, '', $codes);
 
-        // Re-open WAV for encoding
         $handle = fopen($inputWavPath, 'rb');
         fread($handle, 44); // Skip header
 
@@ -59,7 +57,6 @@ class AudioHuffmanCompressor
         }
         fclose($handle);
 
-        // Pack bits into bytes
         $binData = '';
         for ($i = 0; $i < strlen($bitstring); $i += 8) {
             $byte = substr($bitstring, $i, 8);
