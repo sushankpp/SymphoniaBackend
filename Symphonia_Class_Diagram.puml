@@ -1,0 +1,240 @@
+@startuml Symphonia_Class_Diagram
+
+package "Models" {
+    class User {
+        +id: bigint
+        +name: string
+        +email: string
+        +password: string
+        +google_id: string
+        +role: enum
+        +profile_picture: string
+        +status: string
+        --
+        +recentlyPlayed(): HasMany
+        +roleChangeRequests(): HasMany
+        +uploadedMusic(): HasMany
+        +artist(): HasOne
+        +isArtist(): boolean
+        +isAdmin(): boolean
+        +isRegularUser(): boolean
+    }
+
+    class Artist {
+        +id: bigint
+        +user_id: bigint
+        +artist_name: string
+        +artist_image: string
+        --
+        +user(): BelongsTo
+        +music(): HasMany
+        +albums(): HasMany
+        +ratings(): MorphMany
+    }
+
+    class Music {
+        +id: bigint
+        +title: string
+        +file_path: string
+        +artist_id: bigint
+        +album_id: bigint
+        +genre: string
+        +description: text
+        +views: integer
+        +uploaded_by: bigint
+        --
+        +artist(): BelongsTo
+        +album(): BelongsTo
+        +ratings(): MorphMany
+        +recentlyPlayed(): HasMany
+        +uploader(): BelongsTo
+        +getAllRatingsAvg(): float
+    }
+
+    class Album {
+        +id: bigint
+        +title: string
+        +artist_id: bigint
+        +release_date: date
+        +user_id: bigint
+        --
+        +artists(): BelongsTo
+        +songs(): HasMany
+        +ratings(): MorphMany
+        +user(): BelongsTo
+    }
+
+    class Playlist {
+        +id: bigint
+        +user_id: bigint
+        +playlist_name: string
+        --
+        +songs(): BelongsToMany
+        +user(): BelongsTo
+    }
+
+    class PlaylistSong {
+        +id: bigint
+        +playlist_id: bigint
+        +song_id: bigint
+    }
+
+    class Rating {
+        +id: bigint
+        +user_id: bigint
+        +rateable_id: bigint
+        +rateable_type: string
+        +rating: integer
+        --
+        +rateable(): MorphTo
+        +user(): BelongsTo
+    }
+
+    class RecentlyPlayed {
+        +id: bigint
+        +user_id: bigint
+        +song_id: bigint
+        --
+        +song(): BelongsTo
+        +user(): BelongsTo
+    }
+
+    class MusicUploadRequest {
+        +id: bigint
+        +user_id: bigint
+        +song_title: string
+        +file_path: string
+        +genre: string
+        +status: enum
+        --
+        +user(): BelongsTo
+        +approve(): void
+        +reject(): void
+    }
+
+    class RoleChangeRequest {
+        +id: bigint
+        +user_id: bigint
+        +current_role: string
+        +requested_role: string
+        +status: enum
+        +reviewed_by: bigint
+        --
+        +user(): BelongsTo
+        +reviewer(): BelongsTo
+        +approve(): void
+        +reject(): void
+    }
+
+    class UploadedMusic {
+        +id: bigint
+        +music_id: bigint
+        +uploaded_by: bigint
+    }
+}
+
+package "Services" {
+    class RecommendationEngine {
+        --
+        +createSongVector(): array
+        +getUserPreferenceVector(): array
+        +getRecommendations(): array
+        +calculateCosineSimilarity(): float
+    }
+
+    class AudioCompressor {
+        -rice_k: integer
+        --
+        +compress(): void
+        +decompress(): void
+    }
+
+    class AudioHuffmanCompressor {
+        --
+        +compress(): void
+        +decompress(): void
+        -buildTree(): HuffmanNode
+    }
+
+    class HuffmanNode {
+        +frequency: integer
+        +value: integer
+        +left: HuffmanNode
+        +right: HuffmanNode
+        --
+        +isLeaf(): boolean
+    }
+
+    class HuffmanTree {
+        +root: HuffmanNode
+        --
+        +build(): void
+        +encode(): string
+        +decode(): string
+    }
+}
+
+' Relationships
+User ||--o{ RecentlyPlayed : has
+User ||--o{ RoleChangeRequest : has
+User ||--o{ Music : uploads
+User ||--o{ UploadedMusic : uploads
+User ||--o{ Playlist : creates
+User ||--o{ Rating : gives
+User ||--o{ RoleChangeRequest : reviews
+User ||--|| Artist : becomes
+
+Artist ||--o{ Music : creates
+Artist ||--o{ Album : creates
+Artist ||--o{ MusicUploadRequest : requests
+Artist ||--o{ Rating : receives
+
+Music ||--o{ Rating : receives
+Music ||--o{ RecentlyPlayed : played_in
+Music ||--o{ PlaylistSong : belongs_to
+Music ||--o{ UploadedMusic : tracked_in
+Music ||--|| Artist : belongs_to
+Music ||--|| Album : belongs_to
+Music ||--|| User : uploaded_by
+
+Album ||--o{ Music : contains
+Album ||--o{ Rating : receives
+Album ||--|| Artist : belongs_to
+Album ||--|| User : created_by
+
+Playlist ||--o{ PlaylistSong : contains
+Playlist ||--o{ Music : has_many
+Playlist ||--|| User : belongs_to
+
+PlaylistSong ||--|| Playlist : belongs_to
+PlaylistSong ||--|| Music : belongs_to
+
+Rating ||--|| User : given_by
+Rating ||--|| Music : rates
+Rating ||--|| Artist : rates
+Rating ||--|| Album : rates
+
+RecentlyPlayed ||--|| User : belongs_to
+RecentlyPlayed ||--|| Music : refers_to
+
+MusicUploadRequest ||--|| User : requested_by
+MusicUploadRequest ||--|| Artist : for_artist
+MusicUploadRequest ||--|| Album : for_album
+
+RoleChangeRequest ||--|| User : requested_by
+RoleChangeRequest ||--|| User : reviewed_by
+
+UploadedMusic ||--|| Music : tracks
+UploadedMusic ||--|| User : uploaded_by
+
+' Service Dependencies
+RecommendationEngine ..> Music : uses
+RecommendationEngine ..> RecentlyPlayed : uses
+RecommendationEngine ..> Rating : uses
+RecommendationEngine ..> Artist : uses
+
+AudioCompressor ..> HuffmanNode : creates
+AudioHuffmanCompressor ..> HuffmanNode : creates
+AudioHuffmanCompressor ..> HuffmanTree : uses
+
+@enduml

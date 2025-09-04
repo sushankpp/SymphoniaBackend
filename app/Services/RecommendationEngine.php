@@ -150,6 +150,14 @@ class RecommendationEngine
             return $this->getGlobalTrendingSongs($limit);
         }
 
+        // Cache recommendations for 5 minutes to prevent repeated heavy calculations
+        $cache_key = "user_recommendations_{$user_id}_{$limit}";
+        $cached_recommendations = Cache::get($cache_key);
+        
+        if ($cached_recommendations) {
+            return $cached_recommendations;
+        }
+
         try {
             $user_vector = $this->getUserPreferenceVector($user_id);
 
@@ -159,8 +167,10 @@ class RecommendationEngine
 
             $excluded_song_ids = $this->getExcludedSongIds($user_id);
 
+            // Limit the number of songs to process to prevent performance issues
             $all_songs = Music::with(['artist', 'ratings'])
                 ->whereNotIn('id', $excluded_song_ids)
+                ->limit(100) // Limit to prevent processing too many songs
                 ->get();
 
             $recommendations = [];
@@ -183,8 +193,14 @@ class RecommendationEngine
                 return $b['similarity_score'] <=> $a['similarity_score'];
             });
 
-            return array_slice($recommendations, 0, $limit);
+            $final_recommendations = array_slice($recommendations, 0, $limit);
+            
+            // Cache the results for 5 minutes
+            Cache::put($cache_key, $final_recommendations, 300);
+            
+            return $final_recommendations;
         } catch (\Exception $e) {
+            \Log::error('Recommendation engine error: ' . $e->getMessage());
             return $this->getGlobalTrendingSongs($limit);
         }
     }
@@ -289,8 +305,19 @@ class RecommendationEngine
 
     public function getGlobalTrendingSongs($limit = 10)
     {
+        // Cache global trending songs for 10 minutes
+        $cache_key = "global_trending_songs_{$limit}";
+        $cached_songs = Cache::get($cache_key);
+        
+        if ($cached_songs) {
+            return $cached_songs;
+        }
+
         try {
+            // Use database-level ordering and limiting for better performance
             $songs = Music::with(['artist', 'ratings'])
+                ->orderBy('views', 'desc')
+                ->limit(max($limit * 2, 20)) // Get more songs initially for better ranking
                 ->get()
                 ->map(function ($song) {
                     $views = $song->views ?? 0;
@@ -326,8 +353,15 @@ class RecommendationEngine
                 });
             }
 
-            return $songs->take($limit)->toArray();
+            $final_songs = $songs->take($limit)->toArray();
+            
+            // Cache the results for 10 minutes
+            Cache::put($cache_key, $final_songs, 600);
+            
+            return $final_songs;
         } catch (\Exception $e) {
+            \Log::error('Global trending songs error: ' . $e->getMessage());
+            // Fallback to simple view-based ranking
             $songs = Music::with(['artist', 'ratings'])
                 ->orderBy('views', 'desc')
                 ->limit($limit)
@@ -355,7 +389,12 @@ class RecommendationEngine
                 });
             }
 
-            return $songs->toArray();
+            $fallback_songs = $songs->toArray();
+            
+            // Cache the fallback results for 10 minutes
+            Cache::put($cache_key, $fallback_songs, 600);
+            
+            return $fallback_songs;
         }
     }
 

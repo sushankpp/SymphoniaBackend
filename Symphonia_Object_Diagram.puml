@@ -1,0 +1,247 @@
+@startuml Symphonia_Object_Diagram
+
+package "User Instances" {
+    object "user1: User" as user1 {
+        id = 1
+        name = "John Doe"
+        email = "john@example.com"
+        role = "user"
+        status = "active"
+    }
+
+    object "user2: User" as user2 {
+        id = 2
+        name = "Jane Smith"
+        email = "jane@example.com"
+        role = "artist"
+        status = "active"
+    }
+
+    object "admin1: User" as admin1 {
+        id = 3
+        name = "Admin User"
+        email = "admin@symphonia.com"
+        role = "admin"
+        status = "active"
+    }
+}
+
+package "Artist Instances" {
+    object "artist1: Artist" as artist1 {
+        id = 1
+        user_id = 2
+        artist_name = "Jane Smith"
+        artist_image = "jane_profile.jpg"
+    }
+}
+
+package "Album Instances" {
+    object "album1: Album" as album1 {
+        id = 1
+        title = "First Album"
+        artist_id = 1
+        user_id = 2
+        release_date = "2024-01-15"
+    }
+
+    object "album2: Album" as album2 {
+        id = 2
+        title = "Summer Hits"
+        artist_id = 1
+        user_id = 2
+        release_date = "2024-06-01"
+    }
+}
+
+package "Music Instances" {
+    object "song1: Music" as song1 {
+        id = 1
+        title = "Beautiful Day"
+        genre = "Pop"
+        artist_id = 1
+        album_id = 1
+        uploaded_by = 2
+        views = 1500
+    }
+
+    object "song2: Music" as song2 {
+        id = 2
+        title = "Summer Vibes"
+        genre = "Pop"
+        artist_id = 1
+        album_id = 2
+        uploaded_by = 2
+        views = 2300
+    }
+
+    object "song3: Music" as song3 {
+        id = 3
+        title = "Night Dreams"
+        genre = "Jazz"
+        artist_id = 1
+        album_id = 1
+        uploaded_by = 2
+        views = 890
+    }
+}
+
+package "Playlist Instances" {
+    object "playlist1: Playlist" as playlist1 {
+        id = 1
+        user_id = 1
+        playlist_name = "My Favorites"
+    }
+
+    object "playlist2: Playlist" as playlist2 {
+        id = 2
+        user_id = 1
+        playlist_name = "Workout Mix"
+    }
+}
+
+package "Rating Instances" {
+    object "rating1: Rating" as rating1 {
+        id = 1
+        user_id = 1
+        rateable_id = 1
+        rateable_type = "App\\Models\\Music"
+        rating = 5
+    }
+
+    object "rating2: Rating" as rating2 {
+        id = 2
+        user_id = 1
+        rateable_id = 2
+        rateable_type = "App\\Models\\Music"
+        rating = 4
+    }
+
+    object "rating3: Rating" as rating3 {
+        id = 3
+        user_id = 2
+        rateable_id = 1
+        rateable_type = "App\\Models\\Music"
+        rating = 5
+    }
+}
+
+package "Recently Played Instances" {
+    object "recent1: RecentlyPlayed" as recent1 {
+        id = 1
+        user_id = 1
+        song_id = 1
+        created_at = "2024-12-20 10:30:00"
+    }
+
+    object "recent2: RecentlyPlayed" as recent2 {
+        id = 2
+        user_id = 1
+        song_id = 2
+        created_at = "2024-12-20 11:15:00"
+    }
+
+    object "recent3: RecentlyPlayed" as recent3 {
+        id = 3
+        user_id = 1
+        song_id = 3
+        created_at = "2024-12-20 12:00:00"
+    }
+}
+
+package "Music Upload Request Instances" {
+    object "uploadReq1: MusicUploadRequest" as uploadReq1 {
+        id = 1
+        user_id = 2
+        song_title = "New Song"
+        status = "pending"
+        genre = "Rock"
+    }
+}
+
+package "Role Change Request Instances" {
+    object "roleReq1: RoleChangeRequest" as roleReq1 {
+        id = 1
+        user_id = 1
+        current_role = "user"
+        requested_role = "artist"
+        status = "pending"
+        reason = "Want to upload my own music"
+    }
+}
+
+package "Service Instances" {
+    object "recEngine: RecommendationEngine" as recEngine {
+        instance = "singleton"
+    }
+
+    object "audioComp: AudioCompressor" as audioComp {
+        rice_k = 4
+    }
+
+    object "huffmanComp: AudioHuffmanCompressor" as huffmanComp {
+        instance = "singleton"
+    }
+}
+
+' Object Relationships
+user1 ||--o{ recent1 : listens_to
+user1 ||--o{ recent2 : listens_to
+user1 ||--o{ recent3 : listens_to
+user1 ||--o{ rating1 : gives
+user1 ||--o{ rating2 : gives
+user1 ||--o{ playlist1 : creates
+user1 ||--o{ playlist2 : creates
+user1 ||--o{ roleReq1 : requests
+
+user2 ||--|| artist1 : becomes
+user2 ||--o{ song1 : uploads
+user2 ||--o{ song2 : uploads
+user2 ||--o{ song3 : uploads
+user2 ||--o{ album1 : creates
+user2 ||--o{ album2 : creates
+user2 ||--o{ rating3 : gives
+user2 ||--o{ uploadReq1 : submits
+
+admin1 ||--o{ roleReq1 : reviews
+
+artist1 ||--o{ song1 : creates
+artist1 ||--o{ song2 : creates
+artist1 ||--o{ song3 : creates
+artist1 ||--o{ album1 : owns
+artist1 ||--o{ album2 : owns
+
+album1 ||--o{ song1 : contains
+album1 ||--o{ song3 : contains
+album2 ||--o{ song2 : contains
+
+song1 ||--o{ rating1 : receives
+song1 ||--o{ rating3 : receives
+song1 ||--o{ recent1 : played_in
+song2 ||--o{ rating2 : receives
+song2 ||--o{ recent2 : played_in
+song3 ||--o{ recent3 : played_in
+
+playlist1 ||--o{ song1 : includes
+playlist1 ||--o{ song2 : includes
+playlist2 ||--o{ song3 : includes
+
+' Service Usage
+recEngine ..> song1 : analyzes
+recEngine ..> song2 : analyzes
+recEngine ..> song3 : analyzes
+recEngine ..> recent1 : processes
+recEngine ..> recent2 : processes
+recEngine ..> recent3 : processes
+recEngine ..> rating1 : considers
+recEngine ..> rating2 : considers
+recEngine ..> rating3 : considers
+
+audioComp ..> song1 : compresses
+audioComp ..> song2 : compresses
+audioComp ..> song3 : compresses
+
+huffmanComp ..> song1 : compresses
+huffmanComp ..> song2 : compresses
+huffmanComp ..> song3 : compresses
+
+@enduml

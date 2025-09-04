@@ -1,0 +1,388 @@
+@startuml Symphonia_Object_Diagram
+!theme plain
+title Symphonia - Object Diagram
+
+' A4 fit params - much smaller scale
+skinparam dpi 100
+skinparam defaultFontSize 8
+skinparam wrapWidth 150
+scale max 1500 width
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam nodesep 20
+skinparam ranksep 25
+
+object "user1: User" as user1 {
+    id = 1
+    name = "John Doe"
+    email = "john@example.com"
+    role = "artist"
+    status = "active"
+}
+
+object "user2: User" as user2 {
+    id = 2
+    name = "Jane Smith"
+    email = "jane@example.com"
+    role = "user"
+    status = "active"
+}
+
+object "artist1: Artist" as artist1 {
+    id = 1
+    userId = 1
+    artistName = "John Doe"
+}
+
+object "album1: Album" as album1 {
+    id = 1
+    title = "First Album"
+    artistId = 1
+    releaseDate = "2024-02-01"
+}
+
+object "music1: Music" as music1 {
+    id = 1
+    title = "My First Song"
+    artistId = 1
+    albumId = 1
+    genre = "Rock"
+    views = 150
+}
+
+object "music2: Music" as music2 {
+    id = 2
+    title = "Another Song"
+    artistId = 1
+    albumId = 1
+    genre = "Pop"
+    views = 75
+}
+
+object "playlist1: Playlist" as playlist1 {
+    id = 1
+    userId = 2
+    playlistName = "My Favorites"
+}
+
+object "playlistSong1: PlaylistSong" as playlistSong1 {
+    id = 1
+    playlistId = 1
+    songId = 1
+}
+
+object "rating1: Rating" as rating1 {
+    id = 1
+    userId = 2
+    rateableId = 1
+    rateableType = "Music"
+    rating = 5
+}
+
+object "recentlyPlayed1: RecentlyPlayed" as recentlyPlayed1 {
+    id = 1
+    userId = 2
+    songId = 1
+}
+
+object "uploadedMusic1: UploadedMusic" as uploadedMusic1 {
+    id = 1
+    musicId = 1
+    uploadedBy = "artist"
+}
+
+object "musicUploadRequest1: MusicUploadRequest" as musicUploadRequest1 {
+    id = 1
+    userId = 1
+    songTitle = "New Song"
+    status = "pending"
+}
+
+object "roleChangeRequest1: RoleChangeRequest" as roleChangeRequest1 {
+    id = 1
+    userId = 2
+    requestedRole = "artist"
+    status = "pending"
+}
+
+' Relationships
+user1 ||--|| artist1 : "has one"
+user1 ||--o{ album1 : "creates"
+user1 ||--o{ music1 : "creates"
+user1 ||--o{ music2 : "creates"
+user1 ||--o{ uploadedMusic1 : "uploads"
+user1 ||--o{ musicUploadRequest1 : "requests"
+
+user2 ||--o{ playlist1 : "creates"
+user2 ||--o{ rating1 : "rates"
+user2 ||--o{ recentlyPlayed1 : "plays"
+user2 ||--o{ roleChangeRequest1 : "requests"
+
+artist1 ||--o{ album1 : "owns"
+artist1 ||--o{ music1 : "owns"
+artist1 ||--o{ music2 : "owns"
+
+album1 ||--o{ music1 : "contains"
+album1 ||--o{ music2 : "contains"
+
+playlist1 ||--o{ playlistSong1 : "contains"
+
+music1 ||--o{ playlistSong1 : "included_in"
+music1 ||--o{ rating1 : "receives"
+music1 ||--o{ recentlyPlayed1 : "tracked_in"
+music1 ||--o{ uploadedMusic1 : "uploaded_as"
+
+@enduml
+
+@startuml Symphonia_State_Diagram
+!theme plain
+skinparam pageMargin 2
+skinparam backgroundColor white
+skinparam stateBackgroundColor white
+skinparam stateBorderColor black
+skinparam stateFontColor black
+skinparam stateFontSize 6
+skinparam arrowColor black
+
+title Symphonia - State Diagram
+
+[*] --> Unauthenticated
+Unauthenticated --> Authenticated : Login
+Authenticated --> User : Role=user
+Authenticated --> Artist : Role=artist
+Authenticated --> Admin : Role=admin
+
+User --> Browse : Browse
+User --> Play : Play
+User --> Rate : Rate
+User --> RequestRole : Request
+
+Artist --> Upload : Upload
+Artist --> Manage : Manage
+Upload --> Pending : Submit
+Pending --> Approved : Admin OK
+Pending --> Rejected : Admin No
+
+Admin --> Review : Review
+Review --> Approved : Approve
+Review --> Rejected : Reject
+
+RequestRole --> RolePending : Submit
+RolePending --> Artist : Approved
+RolePending --> User : Rejected
+
+Authenticated --> Unauthenticated : Logout
+
+@enduml
+
+@startuml Symphonia_Component_Diagram
+!theme plain
+top to bottom direction
+
+skinparam dpi 150
+skinparam componentStyle rectangle
+skinparam ranksep 25
+skinparam nodesep 25
+skinparam minComponentWidth 200
+skinparam padding 8
+skinparam backgroundColor white
+skinparam arrowColor black
+skinparam arrowFontColor black
+skinparam arrowFontSize 12
+skinparam componentFontSize 14
+skinparam packageFontSize 14
+skinparam databaseFontSize 14
+
+title Symphonia - Actual Laravel Application Architecture
+
+' ==== True vertical layout ====
+[Web Client] as WC
+
+WC -down-> [Laravel API Routes] as API
+
+API -down-> [AuthController] as Auth
+Auth -down-> [User Model] as UMODEL
+UMODEL -down-> database "MySQL Database" as DB
+
+API -down-> [MusicController] as MC
+MC -down-> [Music Model] as MMODEL
+MC -down-> [Album Model] as ALBUMMODEL
+MMODEL -down-> DB
+ALBUMMODEL -down-> DB
+
+API -down-> [ArtistController] as AC
+AC -down-> [Artist Model] as AMODEL
+AMODEL -down-> DB
+
+API -down-> [PlaylistController] as PC
+PC -down-> [Playlist Model] as PMODEL
+PC -down-> [PlaylistSong Model] as PSMODEL
+PMODEL -down-> DB
+PSMODEL -down-> DB
+
+API -down-> [RatingController] as RC
+RC -down-> [Rating Model] as RMODEL
+RC -down-> [RecentlyPlayed Model] as RPMODEL
+RMODEL -down-> DB
+RPMODEL -down-> DB
+
+API -down-> [AdminController] as ADMIN
+ADMIN -down-> [MusicUploadRequest Model] as MURMODEL
+ADMIN -down-> [RoleChangeRequest Model] as RCRMODEL
+MURMODEL -down-> DB
+RCRMODEL -down-> DB
+
+API -down-> [ArtistDashboardController] as ADC
+ADC -down-> AMODEL
+
+API -down-> [MusicUploadRequestController] as MURC
+MURC -down-> MURMODEL
+
+API -down-> [RoleChangeRequestController] as RCRC
+RCRC -down-> RCRMODEL
+
+API -down-> [RecentlyPlayedController] as RPC
+RPC -down-> RPMODEL
+
+API -down-> [AlbumController] as ALBUMC
+ALBUMC -down-> ALBUMMODEL
+
+MC -down-> [RecommendationEngine Service] as RE
+MC -down-> [AudioCompressor Service] as ACS
+ACS -down-> [AudioHuffmanCompressor Service] as AHCS
+
+' ==== External services at bottom ====
+[Google OAuth] as GO
+[Email Service] as EM
+[Redis Cache] as CACHE
+
+Auth -down-> GO
+Auth -down-> EM
+RE -down-> CACHE
+
+@enduml
+
+@startuml Symphonia_Deployment_Diagram
+!theme plain
+skinparam pageMargin 2
+skinparam backgroundColor white
+skinparam nodeBackgroundColor white
+skinparam nodeBorderColor black
+skinparam nodeFontColor black
+skinparam nodeFontSize 8
+skinparam databaseBackgroundColor white
+skinparam databaseBorderColor black
+skinparam databaseFontColor black
+skinparam databaseFontSize 8
+skinparam artifactBackgroundColor white
+skinparam artifactBorderColor black
+skinparam artifactFontColor black
+skinparam artifactFontSize 7
+skinparam arrowColor black
+skinparam arrowFontColor black
+skinparam arrowFontSize 6
+
+title Symphonia Music Platform - Deployment Architecture
+
+node "Client Layer" as CL {
+    artifact "Web Browser" as WB
+}
+
+node "Load Balancer" as LB {
+    artifact "Nginx Load Balancer" as NLB
+}
+
+node "Web Server Layer" as WSL {
+    node "Web Server 1" as WS1 {
+        artifact "Nginx" as NG1
+        artifact "Laravel Framework" as LAR1
+        artifact "PHP 8.2" as PHP1
+    }
+    node "Web Server 2" as WS2 {
+        artifact "Nginx" as NG2
+        artifact "Laravel Framework" as LAR2
+        artifact "PHP 8.2" as PHP2
+    }
+}
+
+node "Application Layer" as AL {
+    node "API Services" as API {
+        artifact "Laravel API" as LAPI
+        artifact "Laravel Sanctum" as SANCTUM
+    }
+    node "Processing Services" as PS {
+        artifact "Audio Processing" as AUDIO
+        artifact "FFmpeg Engine" as FFMPEG
+    }
+    node "Queue Services" as QS {
+        artifact "Queue Workers" as QWORKERS
+        artifact "Redis Queue" as RQUEUE
+    }
+}
+
+node "Data Layer" as DL {
+    node "Database Cluster" as DBC {
+        database "MySQL Primary" as MYSQL_P
+        database "MySQL Replica" as MYSQL_R
+    }
+    node "Cache Cluster" as CC {
+        database "Redis Master" as REDIS_M
+        database "Redis Slave" as REDIS_S
+    }
+}
+
+node "Storage Layer" as SL {
+    artifact "File Storage (S3/Cloud)" as FSTORAGE
+}
+
+node "External Services" as ES {
+    artifact "Google OAuth" as GOAUTH
+    artifact "Email Service" as EMAIL
+}
+
+' Client to Load Balancer
+WB --> NLB : HTTPS
+
+' Load Balancer to Web Servers
+NLB --> NG1 : Load Balanced
+NLB --> NG2 : Load Balanced
+
+' Web Server Internal Flow
+NG1 --> LAR1 : Proxy
+NG2 --> LAR2 : Proxy
+LAR1 --> PHP1 : Execute
+LAR2 --> PHP2 : Execute
+
+' Web Servers to Application Layer
+LAR1 --> LAPI : API Calls
+LAR2 --> LAPI : API Calls
+
+' API Services Internal
+LAPI --> SANCTUM : Authentication
+LAPI --> AUDIO : Audio Processing
+LAPI --> QWORKERS : Background Jobs
+
+' Processing Services
+AUDIO --> FFMPEG : Audio Conversion
+AUDIO --> FSTORAGE : Store Files
+
+' Queue Services
+QWORKERS --> RQUEUE : Job Queue
+
+' Data Access
+LAPI --> MYSQL_P : Primary DB
+LAPI --> MYSQL_R : Read Replica
+QWORKERS --> MYSQL_P : Background Jobs
+LAPI --> REDIS_M : Cache
+LAPI --> REDIS_S : Cache Read
+QWORKERS --> REDIS_M : Cache
+
+' External Services
+SANCTUM --> GOAUTH : OAuth 2.0
+LAPI --> EMAIL : Send Emails
+
+' Database Replication
+MYSQL_P --> MYSQL_R : Replication
+REDIS_M --> REDIS_S : Replication
+
+@enduml

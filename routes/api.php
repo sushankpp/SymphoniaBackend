@@ -692,3 +692,90 @@ Route::middleware(['web'])->group(function () {
     });
 });
 
+// Audio file serving route
+Route::get('/audio/{filename}', function ($filename) {
+    $path = storage_path('app/public/audios/' . $filename);
+    
+    if (!file_exists($path)) {
+        abort(404, 'Audio file not found');
+    }
+    
+    return response()->file($path, [
+        'Content-Type' => 'audio/mpeg',
+        'Accept-Ranges' => 'bytes'
+    ]);
+});
+
+// Alternative audio route with query parameter
+Route::get('/audio-file', function (Request $request) {
+    $filename = $request->get('file');
+    $type = $request->get('type', 'audio');
+    
+    if (!$filename) {
+        abort(400, 'Filename is required');
+    }
+    
+    $path = storage_path('app/public/audios/' . $filename);
+    
+    if (!file_exists($path)) {
+        abort(404, 'Audio file not found');
+    }
+    
+    return response()->file($path, [
+        'Content-Type' => 'audio/mpeg',
+        'Accept-Ranges' => 'bytes'
+    ]);
+});
+
+// Image file serving route (for covers, album art, etc.)
+Route::get('/image-file', function (Request $request) {
+    $filename = $request->get('file');
+    $type = $request->get('type', 'cover');
+    
+    if (!$filename) {
+        abort(400, 'Filename is required');
+    }
+    
+    // Check both possible image directories
+    $paths = [
+        storage_path('app/public/songs_cover/' . $filename),
+        storage_path('app/public/audios/' . $filename),
+        storage_path('app/public/images/' . $filename)
+    ];
+    
+    $imagePath = null;
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            $imagePath = $path;
+            break;
+        }
+    }
+    
+    if (!$imagePath) {
+        abort(404, 'Image file not found: ' . $filename);
+    }
+    
+    // Determine content type based on file extension
+    $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $contentType = match($extension) {
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        default => 'image/jpeg'
+    };
+    
+    return response()->file($imagePath, [
+        'Content-Type' => $contentType,
+        'Cache-Control' => 'public, max-age=31536000' // Cache for 1 year
+    ]);
+});
+
+// Test audio route
+Route::get('/test-audio', function () {
+    return response()->json([
+        'message' => 'Audio route is working',
+        'timestamp' => now()->toISOString()
+    ]);
+});
+
