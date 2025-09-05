@@ -540,6 +540,9 @@ class MusicController extends Controller
             $recommendationEngine = new RecommendationEngine();
             $recommendations = $recommendationEngine->getRecommendations($user_id, $limit);
 
+            // Check if we're showing trending songs (has trending_score) or personalized (has similarity_score)
+            $is_trending = !empty($recommendations) && isset($recommendations[0]['trending_score']);
+
             $processed_recommendations = [];
             foreach ($recommendations as $rec) {
                 $song = $rec['song'];
@@ -563,7 +566,7 @@ class MusicController extends Controller
                         ] : null,
                     ],
                     'similarity_score' => $rec['similarity_score'] ?? $rec['trending_score'] ?? 0,
-                    'is_trending' => !$user_id
+                    'is_trending' => $is_trending
                 ];
             }
 

@@ -33,7 +33,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/simsime-pani-ma-rekha-shah-new-nepali-song-128-ytshorts.savetube.me_1754414993.mp3',
                 'song_cover_path' => 'songs_cover/Blinding_Lights.png',
                 'uploaded_by' => $user2 ? $user2->id : 2,
-                'views' => 1500,
+                'views' => 1,
                 'release_date' => '2024-01-15',
             ],
             [
@@ -45,7 +45,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/Blinded By The Light-yt.savetube.me.mp3',
                 'song_cover_path' => 'albums_cover/adele30.jpg',
                 'uploaded_by' => $user3 ? $user3->id : 3,
-                'views' => 1200,
+                'views' => 1,
                 'release_date' => '1971-04-12',
             ],
             [
@@ -57,7 +57,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/makhamali-from-oonko-sweater-the-woolen-sweater-128-ytshorts.savetube.me.mp3',
                 'song_cover_path' => 'albums_cover/weekend1.jpg',
                 'uploaded_by' => $user4 ? $user4->id : 4,
-                'views' => 2000,
+                'views' => 1,
                 'release_date' => '2024-08-15',
             ],
             [
@@ -69,7 +69,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/The Weeknd - Starboy ft. Daft Punk (Official Video)-yt.savetube.me.mp3',
                 'song_cover_path' => 'songs_cover/Starboy.png',
                 'uploaded_by' => $user2 ? $user2->id : 2,
-                'views' => 2200,
+                'views' => 1,
                 'release_date' => '2016-09-21',
             ],
             [
@@ -81,7 +81,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/Adele - Hello (Official Music Video)-yt.savetube.me.mp3',
                 'song_cover_path' => 'songs_cover/hello.jpg',
                 'uploaded_by' => $user3 ? $user3->id : 3,
-                'views' => 2500,
+                'views' => 1,
                 'release_date' => '2015-10-23',
             ],
             [
@@ -93,7 +93,7 @@ class MusicTableSeeder extends Seeder
                 'file_path' => 'audios/Adele - Rolling in the Deep (Official Music Video)-yt.savetube.me.mp3',
                 'song_cover_path' => 'songs_cover/rolling_in_the_deep.png',
                 'uploaded_by' => $user3 ? $user3->id : 3,
-                'views' => 2100,
+                'views' => 1,
                 'release_date' => '2010-11-29',
             ],
         ];

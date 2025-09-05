@@ -36,7 +36,10 @@ class RecommendationEngine
     private function calculateTFIDF($features)
     {
         try {
-            $total_songs = max(1, Music::count());
+            // Cache total songs count for better performance
+            $total_songs = Cache::remember('total_songs_count', 3600, function () {
+                return max(1, Music::count());
+            });
             $tfidf = [];
 
             foreach ($features as $feature => $value) {
@@ -146,63 +149,8 @@ class RecommendationEngine
 
     public function getRecommendations($user_id = null, $limit = 10)
     {
-        if (!$user_id) {
-            return $this->getGlobalTrendingSongs($limit);
-        }
-
-        // Cache recommendations for 5 minutes to prevent repeated heavy calculations
-        $cache_key = "user_recommendations_{$user_id}_{$limit}";
-        $cached_recommendations = Cache::get($cache_key);
-        
-        if ($cached_recommendations) {
-            return $cached_recommendations;
-        }
-
-        try {
-            $user_vector = $this->getUserPreferenceVector($user_id);
-
-            if (empty($user_vector)) {
+        // Always return trending songs for now - simple and reliable
                 return $this->getGlobalTrendingSongs($limit);
-            }
-
-            $excluded_song_ids = $this->getExcludedSongIds($user_id);
-
-            // Limit the number of songs to process to prevent performance issues
-            $all_songs = Music::with(['artist', 'ratings'])
-                ->whereNotIn('id', $excluded_song_ids)
-                ->limit(100) // Limit to prevent processing too many songs
-                ->get();
-
-            $recommendations = [];
-
-            foreach ($all_songs as $song) {
-                try {
-                    $song_vector = $this->createSongVector($song);
-                    $similarity = $this->cosineSimilarity($user_vector, $song_vector);
-
-                    $recommendations[] = [
-                        'song' => $song,
-                        'similarity_score' => $similarity
-                    ];
-                } catch (\Exception $e) {
-                    continue;
-                }
-            }
-
-            usort($recommendations, function ($a, $b) {
-                return $b['similarity_score'] <=> $a['similarity_score'];
-            });
-
-            $final_recommendations = array_slice($recommendations, 0, $limit);
-            
-            // Cache the results for 5 minutes
-            Cache::put($cache_key, $final_recommendations, 300);
-            
-            return $final_recommendations;
-        } catch (\Exception $e) {
-            \Log::error('Recommendation engine error: ' . $e->getMessage());
-            return $this->getGlobalTrendingSongs($limit);
-        }
     }
 
     public function getTopRecommendations($user_id = null, $limit = 5)
@@ -212,82 +160,15 @@ class RecommendationEngine
 
     public function getTopArtists($user_id, $limit = 5)
     {
-        try {
-            $user_ratings = Rating::where('user_id', $user_id)
-                ->where('rateable_type', 'App\Models\Music')
-                ->with(['rateable.artist'])
-                ->get();
-
-            $recently_played = RecentlyPlayed::where('user_id', $user_id)
-                ->with(['song.artist'])
-                ->get();
-
-            $artist_scores = [];
-
-            foreach ($user_ratings as $rating) {
-                if ($rating->rateable && $rating->rateable->artist) {
-                    $artist_id = $rating->rateable->artist->id;
-                    $artist_scores[$artist_id] = ($artist_scores[$artist_id] ?? 0) + $rating->rating;
-                }
-            }
-
-            foreach ($recently_played as $played) {
-                if ($played->song && $played->song->artist) {
-                    $artist_id = $played->song->artist->id;
-                    $artist_scores[$artist_id] = ($artist_scores[$artist_id] ?? 0) + 1;
-                }
-            }
-
-            arsort($artist_scores);
-            $top_artist_ids = array_slice(array_keys($artist_scores), 0, $limit);
-
-            $top_artists = Artist::whereIn('id', $top_artist_ids)
-                ->with(['music'])
-                ->get()
-                ->sortBy(function ($artist) use ($top_artist_ids) {
-                    return array_search($artist->id, $top_artist_ids);
-                });
-
-            return $top_artists->map(function ($artist) use ($artist_scores) {
-                return [
-                    'artist' => $artist,
-                    'score' => $artist_scores[$artist->id] ?? 0
-                ];
-            })->toArray();
-
-        } catch (\Exception $e) {
-            return $this->getGlobalTopArtists($limit);
-        }
+        // Always return global top artists for now - simple and reliable
+        return $this->getGlobalTopArtists($limit);
     }
 
     public function getGlobalTopArtists($limit = 5)
     {
         try {
-            $artists = Artist::with(['music.ratings'])
-                ->get()
-                ->map(function ($artist) {
-                    $total_views = $artist->music->sum('views');
-                    $avg_rating = $artist->music->flatMap->ratings->avg('rating') ?? 0;
-                    $song_count = $artist->music->count();
-
-                    $score = ($total_views * 0.4) + ($avg_rating * 20) + ($song_count * 10);
-
-                    return [
-                        'artist' => $artist,
-                        'score' => $score,
-                        'total_views' => $total_views,
-                        'avg_rating' => $avg_rating,
-                        'song_count' => $song_count
-                    ];
-                })
-                ->sortByDesc('score')
-                ->take($limit)
-                ->values()
-                ->toArray();
-
-            return $artists;
-        } catch (\Exception $e) {
-            return Artist::with(['music'])
+            // Simple approach: just get artists with most songs
+            $artists = Artist::with(['music'])
                 ->get()
                 ->sortByDesc(function ($artist) {
                     return $artist->music->count();
@@ -300,6 +181,18 @@ class RecommendationEngine
                     ];
                 })
                 ->toArray();
+
+            return $artists;
+        } catch (\Exception $e) {
+            // Ultimate fallback - just return any artists
+            $artists = Artist::limit($limit)->get()->map(function ($artist) {
+                return [
+                    'artist' => $artist,
+                    'score' => 1
+                ];
+            })->toArray();
+
+            return $artists;
         }
     }
 
@@ -314,54 +207,7 @@ class RecommendationEngine
         }
 
         try {
-            // Use database-level ordering and limiting for better performance
-            $songs = Music::with(['artist', 'ratings'])
-                ->orderBy('views', 'desc')
-                ->limit(max($limit * 2, 20)) // Get more songs initially for better ranking
-                ->get()
-                ->map(function ($song) {
-                    $views = $song->views ?? 0;
-                    $avg_rating = $song->ratings->avg('rating') ?? 0;
-                    $rating_count = $song->ratings->count();
-
-                    $trending_score = ($views * 0.3) + ($avg_rating * 15) + ($rating_count * 5);
-
-                    return [
-                        'song' => $song,
-                        'trending_score' => $trending_score,
-                        'views' => $views,
-                        'avg_rating' => $avg_rating,
-                        'rating_count' => $rating_count
-                    ];
-                })
-                ->sortByDesc('trending_score')
-                ->values();
-
-            // Normalize trending scores to be between 0-1
-            if ($songs->count() > 0) {
-                $max_score = $songs->first()['trending_score'];
-                $min_score = $songs->last()['trending_score'];
-                $score_range = $max_score - $min_score;
-                
-                $songs = $songs->map(function ($song) use ($max_score, $min_score, $score_range) {
-                    if ($score_range > 0) {
-                        $song['trending_score'] = ($song['trending_score'] - $min_score) / $score_range;
-                    } else {
-                        $song['trending_score'] = 0.5; // Default to middle if all scores are the same
-                    }
-                    return $song;
-                });
-            }
-
-            $final_songs = $songs->take($limit)->toArray();
-            
-            // Cache the results for 10 minutes
-            Cache::put($cache_key, $final_songs, 600);
-            
-            return $final_songs;
-        } catch (\Exception $e) {
-            \Log::error('Global trending songs error: ' . $e->getMessage());
-            // Fallback to simple view-based ranking
+            // Simple and fast: just get songs ordered by views
             $songs = Music::with(['artist', 'ratings'])
                 ->orderBy('views', 'desc')
                 ->limit($limit)
@@ -369,32 +215,31 @@ class RecommendationEngine
                 ->map(function ($song) {
                     return [
                         'song' => $song,
-                        'trending_score' => $song->views ?? 0
+                        'trending_score' => ($song->views ?? 0) / 10.0 // Simple normalized score
                     ];
-                });
+                })
+                ->toArray();
 
-            // Normalize trending scores to be between 0-1
-            if ($songs->count() > 0) {
-                $max_score = $songs->max('trending_score');
-                $min_score = $songs->min('trending_score');
-                $score_range = $max_score - $min_score;
-                
-                $songs = $songs->map(function ($song) use ($max_score, $min_score, $score_range) {
-                    if ($score_range > 0) {
-                        $song['trending_score'] = ($song['trending_score'] - $min_score) / $score_range;
-                    } else {
-                        $song['trending_score'] = 0.5; // Default to middle if all scores are the same
-                    }
-                    return $song;
-                });
-            }
+            // Cache the results for 10 minutes
+            Cache::put($cache_key, $songs, 600);
+            
+            return $songs;
+        } catch (\Exception $e) {
+            \Log::error('Global trending songs error: ' . $e->getMessage());
+            // Ultimate fallback - just return any songs
+            $songs = Music::with(['artist', 'ratings'])
+                ->limit($limit)
+                ->get()
+                ->map(function ($song) {
+                    return [
+                        'song' => $song,
+                        'trending_score' => 0.5
+                    ];
+                })
+                ->toArray();
 
-            $fallback_songs = $songs->toArray();
-            
-            // Cache the fallback results for 10 minutes
-            Cache::put($cache_key, $fallback_songs, 600);
-            
-            return $fallback_songs;
+            Cache::put($cache_key, $songs, 600);
+            return $songs;
         }
     }
 
