@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\RecentlyPlayed;
+use App\Services\RecommendationEngine;
 use Illuminate\Http\Request;
 
 class RecentlyPlayedController extends Controller
@@ -27,6 +28,10 @@ class RecentlyPlayedController extends Controller
                 'song_id' => $validated['song_id'],
             ]);
         }
+
+        // Clear recommendation cache when user plays a song
+        $recommendationEngine = new RecommendationEngine();
+        $recommendationEngine->clearRecommendationCache($user_id);
 
         return response()->json(['message' => 'Song added to recently played'], 201);
     }

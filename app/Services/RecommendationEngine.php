@@ -36,7 +36,6 @@ class RecommendationEngine
     private function calculateTFIDF($features)
     {
         try {
-            // Cache total songs count for better performance
             $total_songs = Cache::remember('total_songs_count', 3600, function () {
                 return max(1, Music::count());
             });
@@ -51,7 +50,6 @@ class RecommendationEngine
                         $idf = 0;
                     } else {
                         $idf = log($total_songs / ($songs_with_feature + 1));
-
                         $idf = max(0, min($idf, 5));
                     }
 
@@ -147,11 +145,68 @@ class RecommendationEngine
         return $dot_product / ($user_magnitude * $song_magnitude);
     }
 
+    /**
+     * Main entry point for recommendations
+     */
     public function getRecommendations($user_id = null, $limit = 10)
     {
-        // Always return trending songs for now - simple and reliable
-                return $this->getGlobalTrendingSongs($limit);
+        if ($user_id) {
+            $personalized = $this->getPersonalizedRecommendations($user_id, $limit);
+
+            // Lower threshold: if we have any personalized results, use them
+            if (count($personalized) > 0) {
+                // If we have fewer personalized results than requested, mix with trending
+                if (count($personalized) < $limit) {
+                    $trending = $this->getGlobalTrendingSongs($limit);
+                    $remaining = $limit - count($personalized);
+                    return array_merge(
+                        $personalized,
+                        array_slice($trending, 0, $remaining)
+                    );
+                }
+                return $personalized;
+            }
+
+            // Fallback to trending if no personalized results
+            return $this->getGlobalTrendingSongs($limit);
+        }
+
+        return $this->getGlobalTrendingSongs($limit);
     }
+
+    private function getPersonalizedRecommendations($user_id, $limit = 10)
+    {
+        try {
+            $user_vector = $this->getUserPreferenceVector($user_id);
+            $excluded_ids = $this->getExcludedSongIds($user_id);
+
+            // Candidate pool = all available songs (except excluded)
+            $candidates = Music::with(['artist', 'ratings'])
+                ->whereNotIn('id', $excluded_ids)
+                ->get();
+
+            $scored = [];
+            foreach ($candidates as $song) {
+                $song_vector = $this->createSongVector($song);
+                $similarity = $this->cosineSimilarity($user_vector, $song_vector);
+
+                if ($similarity > 0) {
+                    $scored[] = [
+                        'song' => $song,
+                        'similarity_score' => $similarity
+                    ];
+                }
+            }
+
+            usort($scored, fn($a, $b) => $b['similarity_score'] <=> $a['similarity_score']);
+
+            return array_slice($scored, 0, $limit);
+        } catch (\Exception $e) {
+            \Log::error("Personalized recommendation error: " . $e->getMessage());
+            return [];
+        }
+    }
+
 
     public function getTopRecommendations($user_id = null, $limit = 5)
     {
@@ -160,37 +215,28 @@ class RecommendationEngine
 
     public function getTopArtists($user_id, $limit = 5)
     {
-        // Always return global top artists for now - simple and reliable
         return $this->getGlobalTopArtists($limit);
     }
 
     public function getGlobalTopArtists($limit = 5)
     {
         try {
-            // Simple approach: just get artists with most songs
             $artists = Artist::with(['music'])
                 ->get()
-                ->sortByDesc(function ($artist) {
-                    return $artist->music->count();
-                })
+                ->sortByDesc(fn($artist) => $artist->music->count())
                 ->take($limit)
-                ->map(function ($artist) {
-                    return [
-                        'artist' => $artist,
-                        'score' => $artist->music->count()
-                    ];
-                })
+                ->map(fn($artist) => [
+                    'artist' => $artist,
+                    'score' => $artist->music->count()
+                ])
                 ->toArray();
 
             return $artists;
         } catch (\Exception $e) {
-            // Ultimate fallback - just return any artists
-            $artists = Artist::limit($limit)->get()->map(function ($artist) {
-                return [
-                    'artist' => $artist,
-                    'score' => 1
-                ];
-            })->toArray();
+            $artists = Artist::limit($limit)->get()->map(fn($artist) => [
+                'artist' => $artist,
+                'score' => 1
+            ])->toArray();
 
             return $artists;
         }
@@ -198,66 +244,64 @@ class RecommendationEngine
 
     public function getGlobalTrendingSongs($limit = 10)
     {
-        // Cache global trending songs for 10 minutes
+        // Reduce cache time to 2 minutes for more responsive updates
         $cache_key = "global_trending_songs_{$limit}";
         $cached_songs = Cache::get($cache_key);
-        
+
         if ($cached_songs) {
             return $cached_songs;
         }
 
         try {
-            // Simple and fast: just get songs ordered by views
             $songs = Music::with(['artist', 'ratings'])
                 ->orderBy('views', 'desc')
                 ->limit($limit)
                 ->get()
-                ->map(function ($song) {
-                    return [
-                        'song' => $song,
-                        'trending_score' => ($song->views ?? 0) / 10.0 // Simple normalized score
-                    ];
-                })
+                ->map(fn($song) => [
+                    'song' => $song,
+                    'trending_score' => ($song->views ?? 0) / 10.0
+                ])
                 ->toArray();
 
-            // Cache the results for 10 minutes
-            Cache::put($cache_key, $songs, 600);
-            
+            // Reduced cache time from 600s (10 min) to 120s (2 min)
+            Cache::put($cache_key, $songs, 120);
             return $songs;
         } catch (\Exception $e) {
             \Log::error('Global trending songs error: ' . $e->getMessage());
-            // Ultimate fallback - just return any songs
+
             $songs = Music::with(['artist', 'ratings'])
                 ->limit($limit)
                 ->get()
-                ->map(function ($song) {
-                    return [
-                        'song' => $song,
-                        'trending_score' => 0.5
-                    ];
-                })
+                ->map(fn($song) => [
+                    'song' => $song,
+                    'trending_score' => 0.5
+                ])
                 ->toArray();
 
-            Cache::put($cache_key, $songs, 600);
+            Cache::put($cache_key, $songs, 120);
             return $songs;
         }
     }
 
     private function getExcludedSongIds($user_id)
     {
-        $rated_songs = Rating::where('user_id', $user_id)
-            ->where('rateable_type', 'App\Models\Music')
-            ->pluck('rateable_id');
-
+        // Only exclude songs played in the last 30 minutes (reduced from 1 hour)
         $recently_played_songs = RecentlyPlayed::where('user_id', $user_id)
+            ->where('created_at', '>', now()->subMinutes(30))
             ->pluck('song_id');
+
+        // Exclude low-rated songs (1-3 stars), but allow 4-5★ to reappear
+        $rated_songs = Rating::where('user_id', $user_id)
+            ->where('rateable_type', Music::class)
+            ->where('rating', '<', 4) // Changed from 5 to 4
+            ->pluck('rateable_id');
 
         return $rated_songs->merge($recently_played_songs)->unique()->toArray();
     }
 
     private function calculateRatingWeight($rating)
     {
-        return $rating / 5.0 * 2.0;
+        return pow(2, $rating); // 1★=2, 5★=32
     }
 
     private function normalizeValue($value)
@@ -275,23 +319,21 @@ class RecommendationEngine
 
     private function normalizeVector($vector)
     {
-        $magnitude = sqrt(array_sum(array_map(function ($val) {
-            return $val * $val;
-        }, $vector)));
+        $magnitude = sqrt(array_sum(array_map(fn($val) => $val * $val, $vector)));
 
         if ($magnitude == 0) {
             return $vector;
         }
 
-        return array_map(function ($val) use ($magnitude) {
-            return $val / $magnitude;
-        }, $vector);
+        return array_map(fn($val) => $val / $magnitude, $vector);
     }
 
     private function calculateTimeWeight($created_at)
     {
         $hours_ago = now()->diffInHours($created_at);
-        return exp(-$hours_ago / 24);
+
+        // Slower decay: last 24h counts strongly
+        return 1 / (1 + $hours_ago / 12);
     }
 
     private function extractEra($date)
@@ -314,16 +356,12 @@ class RecommendationEngine
     {
         if ($feature === 'genre' && is_string($value)) {
             $cache_key = "songs_with_genre_" . md5($value);
-            return Cache::remember($cache_key, 3600, function () use ($value) {
-                return Music::where('genre', $value)->count();
-            });
+            return Cache::remember($cache_key, 3600, fn() => Music::where('genre', $value)->count());
         } elseif ($feature === 'era' && is_string($value)) {
             return 1;
         } else {
             $cache_key = "songs_with_{$feature}_{$value}";
-            return Cache::remember($cache_key, 3600, function () use ($feature, $value) {
-                return Music::where($feature, $value)->count();
-            });
+            return Cache::remember($cache_key, 3600, fn() => Music::where($feature, $value)->count());
         }
     }
 
@@ -333,12 +371,30 @@ class RecommendationEngine
             ->orderBy('views', 'desc')
             ->limit($limit)
             ->get()
-            ->map(function ($song) {
-                return [
-                    'song' => $song,
-                    'similarity_score' => 0.5
-                ];
-            })
+            ->map(fn($song) => [
+                'song' => $song,
+                'similarity_score' => 0.5
+            ])
             ->toArray();
+    }
+
+    /**
+     * Clear recommendation cache when user actions occur
+     */
+    public function clearRecommendationCache($user_id = null)
+    {
+        // Clear global trending cache
+        Cache::forget('global_trending_songs_5');
+        Cache::forget('global_trending_songs_10');
+        Cache::forget('global_trending_songs_20');
+        
+        // Clear user-specific cache if provided
+        if ($user_id) {
+            Cache::forget("user_recommendations_{$user_id}");
+            Cache::forget("user_preference_vector_{$user_id}");
+        }
+        
+        // Clear total songs count cache
+        Cache::forget('total_songs_count');
     }
 }

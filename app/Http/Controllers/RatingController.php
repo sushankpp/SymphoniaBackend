@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Rating;
+use App\Services\RecommendationEngine;
 use Illuminate\Http\Request;
 
 class RatingController extends Controller
@@ -41,6 +42,12 @@ class RatingController extends Controller
                 'rateable_type' => $rateableType,
                 'rating' => $validated['rating'],
             ]);
+        }
+
+        // Clear recommendation cache when user rates a song
+        if ($rateableType === 'App\Models\Music') {
+            $recommendationEngine = new RecommendationEngine();
+            $recommendationEngine->clearRecommendationCache(auth()->id());
         }
 
         return response()->json([
